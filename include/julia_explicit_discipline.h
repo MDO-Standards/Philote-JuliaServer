@@ -145,6 +145,13 @@ private:
      */
     jl_function_t* GetJuliaFunction(const std::string& name);
 
+    /**
+     * @brief Get discipline object from Julia globals
+     * @return Julia discipline object
+     * @throws std::runtime_error if object not found
+     */
+    jl_value_t* GetDisciplineObject();
+
     DisciplineConfig config_;
     jl_module_t* module_;           // Julia module containing discipline
     jl_value_t* discipline_obj_;    // Julia discipline instance

@@ -21,6 +21,9 @@ JuliaExplicitDiscipline::JuliaExplicitDiscipline(
     : config_(config), module_(nullptr), discipline_obj_(nullptr) {
     // Discipline construction happens on main thread
     // Julia initialization and loading will happen in Initialize()
+    std::cout << "[DEBUG] JuliaExplicitDiscipline constructor" << std::endl;
+    Initialize();
+    std::cout << "[DEBUG] JuliaExplicitDiscipline constructor complete" << std::endl;
 }
 
 JuliaExplicitDiscipline::~JuliaExplicitDiscipline() {
@@ -73,26 +76,44 @@ void JuliaExplicitDiscipline::LoadJuliaDiscipline() {
 }
 
 void JuliaExplicitDiscipline::Setup() {
-    JuliaThreadGuard guard;  // Adopt main thread
-    GCProtect protect(discipline_obj_);
+    std::cout << "[DEBUG] JuliaExplicitDiscipline::Setup() called" << std::endl;
+    // Execute on dedicated Julia thread
+    try {
+        std::cout << "[DEBUG] About to submit task to executor..." << std::endl;
+        JuliaExecutor::GetInstance().Submit([this]() {
+            std::cout << "[DEBUG] Setup lambda starting..." << std::endl;
+            jl_value_t* discipline_obj = GetDisciplineObject();
+            std::cout << "[DEBUG] Got discipline object: " << discipline_obj << std::endl;
+            GCProtect protect(discipline_obj);
 
-    // Call Julia setup!() function
-    jl_function_t* setup_fn = GetJuliaFunction("setup!");
-    if (!setup_fn) {
-        throw std::runtime_error(
-            "Julia discipline missing required function: setup!()");
+            // Call Julia setup!() function
+            jl_function_t* setup_fn = GetJuliaFunction("setup!");
+            std::cout << "[DEBUG] Got setup function: " << setup_fn << std::endl;
+            if (!setup_fn) {
+                throw std::runtime_error(
+                    "Julia discipline missing required function: setup!()");
+            }
+
+            std::cout << "[DEBUG] Calling Julia setup!()..." << std::endl;
+            jl_call1(setup_fn, discipline_obj);
+            CheckJuliaException();
+            std::cout << "[DEBUG] Julia setup!() completed" << std::endl;
+
+            // Extract I/O metadata and register with Philote-Cpp
+            ExtractIOMetadata();
+            std::cout << "[DEBUG] ExtractIOMetadata completed" << std::endl;
+        });
+        std::cout << "[DEBUG] Setup completed successfully" << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "[ERROR] Setup failed: " << e.what() << std::endl;
+        throw;
     }
-
-    jl_call1(setup_fn, discipline_obj_);
-    CheckJuliaException();
-
-    // Extract I/O metadata and register with Philote-Cpp
-    ExtractIOMetadata();
 }
 
 void JuliaExplicitDiscipline::ExtractIOMetadata() {
-    JuliaThreadGuard guard;
-    GCProtect protect(discipline_obj_);
+    // Called from Setup() which is already on Julia executor thread
+    jl_value_t* discipline_obj = GetDisciplineObject();
+    GCProtect protect(discipline_obj);
 
     // Get inputs metadata
     jl_function_t* getproperty_fn = jl_get_function(jl_base_module, "getproperty");
@@ -100,7 +121,7 @@ void JuliaExplicitDiscipline::ExtractIOMetadata() {
     jl_value_t* outputs_sym = reinterpret_cast<jl_value_t*>(jl_symbol("outputs"));
 
     // Get inputs dict
-    jl_value_t* inputs_dict = jl_call2(getproperty_fn, discipline_obj_, inputs_sym);
+    jl_value_t* inputs_dict = jl_call2(getproperty_fn, discipline_obj, inputs_sym);
     CheckJuliaException();
 
     if (inputs_dict) {
@@ -161,7 +182,7 @@ void JuliaExplicitDiscipline::ExtractIOMetadata() {
     }
 
     // Get outputs metadata (same process)
-    jl_value_t* outputs_dict = jl_call2(getproperty_fn, discipline_obj_, outputs_sym);
+    jl_value_t* outputs_dict = jl_call2(getproperty_fn, discipline_obj, outputs_sym);
     CheckJuliaException();
 
     if (outputs_dict && 1) {
@@ -216,29 +237,33 @@ void JuliaExplicitDiscipline::ExtractIOMetadata() {
 }
 
 void JuliaExplicitDiscipline::SetupPartials() {
-    JuliaThreadGuard guard;
-    GCProtect protect(discipline_obj_);
+    // Execute on dedicated Julia thread
+    JuliaExecutor::GetInstance().Submit([this]() {
+        jl_value_t* discipline_obj = GetDisciplineObject();
+        GCProtect protect(discipline_obj);
 
-    // Call Julia setup_partials!() if it exists
-    jl_function_t* setup_partials_fn = GetJuliaFunction("setup_partials!");
-    if (setup_partials_fn) {
-        jl_call1(setup_partials_fn, discipline_obj_);
-        CheckJuliaException();
-    }
+        // Call Julia setup_partials!() if it exists
+        jl_function_t* setup_partials_fn = GetJuliaFunction("setup_partials!");
+        if (setup_partials_fn) {
+            jl_call1(setup_partials_fn, discipline_obj);
+            CheckJuliaException();
+        }
 
-    // Extract partials metadata
-    ExtractPartialsMetadata();
+        // Extract partials metadata
+        ExtractPartialsMetadata();
+    });
 }
 
 void JuliaExplicitDiscipline::ExtractPartialsMetadata() {
-    JuliaThreadGuard guard;
-    GCProtect protect(discipline_obj_);
+    // Called from SetupPartials() which is already on Julia executor thread
+    jl_value_t* discipline_obj = GetDisciplineObject();
+    GCProtect protect(discipline_obj);
 
     // Get partials metadata from discipline
     jl_function_t* getproperty_fn = jl_get_function(jl_base_module, "getproperty");
     jl_value_t* partials_sym = reinterpret_cast<jl_value_t*>(jl_symbol("partials"));
 
-    jl_value_t* partials_dict = jl_call2(getproperty_fn, discipline_obj_, partials_sym);
+    jl_value_t* partials_dict = jl_call2(getproperty_fn, discipline_obj, partials_sym);
     CheckJuliaException();
 
     if (!partials_dict || !1) {
@@ -285,7 +310,8 @@ void JuliaExplicitDiscipline::Compute(const philote::Variables& inputs,
     // Execute on dedicated Julia thread - NO CONCURRENCY
     outputs = JuliaExecutor::GetInstance().Submit([this, &inputs]() {
         // All Julia calls happen on single executor thread
-        GCProtect protect(discipline_obj_);
+        jl_value_t* discipline_obj = GetDisciplineObject();
+        GCProtect protect(discipline_obj);
 
         jl_value_t* inputs_dict = VariablesToJuliaDict(inputs);
         GCProtect protect_inputs(inputs_dict);
@@ -296,7 +322,7 @@ void JuliaExplicitDiscipline::Compute(const philote::Variables& inputs,
                 "Julia discipline missing required function: compute()");
         }
 
-        jl_value_t* result = jl_call2(compute_fn, discipline_obj_, inputs_dict);
+        jl_value_t* result = jl_call2(compute_fn, discipline_obj, inputs_dict);
         CheckJuliaException();
 
         if (!result) {
@@ -310,61 +336,81 @@ void JuliaExplicitDiscipline::Compute(const philote::Variables& inputs,
 
 void JuliaExplicitDiscipline::ComputePartials(const philote::Variables& inputs,
                                               philote::Partials& partials) {
-    JuliaThreadGuard guard;
-    std::lock_guard<std::mutex> lock(compute_mutex_);
+    // Execute on dedicated Julia thread - NO CONCURRENCY
+    partials = JuliaExecutor::GetInstance().Submit([this, &inputs]() {
+        jl_value_t* discipline_obj = GetDisciplineObject();
+        GCProtect protect(discipline_obj);
 
-    GCProtect protect(discipline_obj_);
+        // Convert inputs
+        jl_value_t* inputs_dict = VariablesToJuliaDict(inputs);
+        GCProtect protect_inputs(inputs_dict);
 
-    // Convert inputs
-    jl_value_t* inputs_dict = VariablesToJuliaDict(inputs);
-    GCProtect protect_inputs(inputs_dict);
+        // Call Julia compute_partials function
+        jl_function_t* compute_partials_fn = GetJuliaFunction("compute_partials");
+        if (!compute_partials_fn) {
+            throw std::runtime_error(
+                "Julia discipline missing function: compute_partials()");
+        }
 
-    // Call Julia compute_partials function
-    jl_function_t* compute_partials_fn = GetJuliaFunction("compute_partials");
-    if (!compute_partials_fn) {
-        throw std::runtime_error(
-            "Julia discipline missing function: compute_partials()");
-    }
+        jl_value_t* result =
+            jl_call2(compute_partials_fn, discipline_obj, inputs_dict);
+        CheckJuliaException();
 
-    jl_value_t* result =
-        jl_call2(compute_partials_fn, discipline_obj_, inputs_dict);
-    CheckJuliaException();
+        if (!result) {
+            throw std::runtime_error("Julia compute_partials() returned null");
+        }
 
-    if (!result) {
-        throw std::runtime_error("Julia compute_partials() returned null");
-    }
-
-    GCProtect protect_result(result);
-
-    // Convert Julia Dict to Partials
-    partials = JuliaDictToPartials(result);
+        GCProtect protect_result(result);
+        return JuliaDictToPartials(result);
+    });
 }
 
 void JuliaExplicitDiscipline::SetOptions(
     const google::protobuf::Struct& options) {
-    JuliaThreadGuard guard;
-    GCProtect protect(discipline_obj_);
+    // Execute on dedicated Julia thread
+    JuliaExecutor::GetInstance().Submit([this, &options]() {
+        jl_value_t* discipline_obj = GetDisciplineObject();
+        GCProtect protect(discipline_obj);
 
-    // Convert protobuf Struct to Julia Dict
-    jl_value_t* options_dict = ProtobufStructToJuliaDict(options);
-    GCProtect protect_options(options_dict);
+        // Convert protobuf Struct to Julia Dict
+        jl_value_t* options_dict = ProtobufStructToJuliaDict(options);
+        GCProtect protect_options(options_dict);
 
-    // Call Julia set_options!() if it exists
-    jl_function_t* set_options_fn = GetJuliaFunction("set_options!");
-    if (set_options_fn) {
-        jl_call2(set_options_fn, discipline_obj_, options_dict);
-        CheckJuliaException();
-    }
+        // Call Julia set_options!() if it exists
+        jl_function_t* set_options_fn = GetJuliaFunction("set_options!");
+        if (set_options_fn) {
+            jl_call2(set_options_fn, discipline_obj, options_dict);
+            CheckJuliaException();
+        }
+    });
 
-    // Call parent to invoke Configure()
+    // Call parent to invoke Configure() (C++ only, not Julia)
     ExplicitDiscipline::SetOptions(options);
+}
+
+jl_value_t* JuliaExplicitDiscipline::GetDisciplineObject() {
+    // Retrieve discipline object from Julia globals
+    // This ensures thread-safe access without relying on C++ member pointers
+    jl_module_t* main_module = jl_main_module;
+    jl_value_t* discipline_obj = jl_get_global(main_module, jl_symbol("_philote_discipline_obj"));
+    if (!discipline_obj) {
+        throw std::runtime_error("Discipline object not found in Julia globals");
+    }
+    return discipline_obj;
 }
 
 jl_function_t* JuliaExplicitDiscipline::GetJuliaFunction(
     const std::string& name) {
-    // Single-threaded server: safe to access module_ directly
-    // Module is permanently rooted via Julia global variables
-    jl_function_t* fn = jl_get_function(module_, name.c_str());
+    // Retrieve module from Julia globals EVERY time
+    // This ensures thread-safe access without relying on C++ member pointers
+    jl_module_t* main_module = jl_main_module;
+    jl_value_t* module_val = jl_get_global(main_module, jl_symbol("_philote_discipline_module"));
+    if (!module_val) {
+        throw std::runtime_error("Module not found in Julia globals");
+    }
+
+    jl_module_t* module = reinterpret_cast<jl_module_t*>(module_val);
+    jl_function_t* fn = jl_get_function(module, name.c_str());
     return fn;
 }
 
