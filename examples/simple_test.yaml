@@ -1,0 +1,9 @@
+discipline:
+  kind: explicit
+  julia_file: simple_test.jl
+  julia_type: SimpleDiscipline
+  options: {}
+
+server:
+  address: "[::]:50051"
+  max_threads: 10
