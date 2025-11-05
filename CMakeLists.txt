@@ -81,6 +81,16 @@ if(BUILD_TESTS)
     add_subdirectory(test)
 endif()
 
+# Test client executable
+add_executable(simple_test_client
+    examples/simple_test_client.cpp
+)
+
+target_link_libraries(simple_test_client
+    PRIVATE
+        PhiloteCpp::PhiloteCpp
+)
+
 # Installation
 install(TARGETS philote-julia-serve
     RUNTIME DESTINATION bin
