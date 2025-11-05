@@ -87,17 +87,8 @@ void JuliaExplicitDiscipline::LoadJuliaDiscipline() {
                                      config_.julia_type);
         }
 
-        // CRITICAL: Store module and discipline object as global Julia variables
-        // This provides permanent GC rooting that works across all threads
-        std::cerr << "[DEBUG] LoadJuliaDiscipline: Storing in Julia globals..." << std::endl;
-        std::cerr.flush();
-
-        jl_module_t* main_module = jl_main_module;
-        jl_set_global(main_module, jl_symbol("_philote_discipline_module"),
-                      reinterpret_cast<jl_value_t*>(module_));
-        jl_set_global(main_module, jl_symbol("_philote_discipline_obj"),
-                      discipline_obj_);
-
+        // No need to store in globals - just keep as C++ member variable
+        // GC protection is handled by GCProtect when we use it
         std::cerr << "[DEBUG] LoadJuliaDiscipline: Complete!" << std::endl;
         std::cerr.flush();
     });
@@ -417,28 +408,19 @@ void JuliaExplicitDiscipline::SetOptions(
 }
 
 jl_value_t* JuliaExplicitDiscipline::GetDisciplineObject() {
-    // Retrieve discipline object from Julia globals
-    // This ensures thread-safe access without relying on C++ member pointers
-    jl_module_t* main_module = jl_main_module;
-    jl_value_t* discipline_obj = jl_get_global(main_module, jl_symbol("_philote_discipline_obj"));
-    if (!discipline_obj) {
-        throw std::runtime_error("Discipline object not found in Julia globals");
+    // Return C++ member variable directly
+    // GC protection is handled by GCProtect when we use it
+    if (!discipline_obj_) {
+        throw std::runtime_error("Discipline object not initialized");
     }
-    return discipline_obj;
+    return discipline_obj_;
 }
 
 jl_function_t* JuliaExplicitDiscipline::GetJuliaFunction(
     const std::string& name) {
-    // Retrieve module from Julia globals EVERY time
-    // This ensures thread-safe access without relying on C++ member pointers
+    // Functions are always defined in Main module (where we include() the Julia file)
     jl_module_t* main_module = jl_main_module;
-    jl_value_t* module_val = jl_get_global(main_module, jl_symbol("_philote_discipline_module"));
-    if (!module_val) {
-        throw std::runtime_error("Module not found in Julia globals");
-    }
-
-    jl_module_t* module = reinterpret_cast<jl_module_t*>(module_val);
-    jl_function_t* fn = jl_get_function(module, name.c_str());
+    jl_function_t* fn = jl_get_function(main_module, name.c_str());
     return fn;
 }
 

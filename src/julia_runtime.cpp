@@ -3,6 +3,7 @@
 
 #include "julia_runtime.h"
 
+#include <filesystem>
 #include <iostream>
 #include <stdexcept>
 
@@ -35,18 +36,18 @@ jl_module_t* JuliaRuntime::LoadJuliaFile(const std::string& filepath) {
         throw std::runtime_error("Julia runtime not initialized");
     }
 
-    // Use include() to load the file
-    jl_function_t* include_fn = jl_get_function(jl_base_module, "include");
-    if (!include_fn) {
-        throw std::runtime_error("Could not find Base.include function");
-    }
+    // Convert to absolute path
+    std::filesystem::path abs_path = std::filesystem::absolute(filepath);
+    std::string abs_path_str = abs_path.string();
 
-    jl_value_t* filepath_jl = jl_cstr_to_string(filepath.c_str());
-    JL_GC_PUSH1(&filepath_jl);
+    std::cout << "[DEBUG] Loading Julia file: " << filepath << std::endl;
+    std::cout << "[DEBUG] Absolute path: " << abs_path_str << std::endl;
 
-    jl_value_t* result = jl_call1(include_fn, filepath_jl);
+    // Use jl_eval_string with include() - this gives better error messages
+    std::string include_cmd = "include(\"" + abs_path_str + "\")";
+    std::cout << "[DEBUG] Eval string: " << include_cmd << std::endl;
 
-    JL_GC_POP();
+    jl_value_t* result = jl_eval_string(include_cmd.c_str());
 
     // Check for exceptions
     if (jl_exception_occurred()) {
