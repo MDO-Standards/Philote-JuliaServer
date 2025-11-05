@@ -5,9 +5,10 @@
 #define PHILOTE_JULIA_SERVER_JULIA_IMPLICIT_DISCIPLINE_H
 
 #include <julia.h>
-#include <philote/implicit.h>
 
 #include <mutex>
+
+#include <implicit.h>
 
 #include "julia_config.h"
 

@@ -17,46 +17,56 @@ GCProtect::GCProtect(std::initializer_list<jl_value_t*> objs)
     switch (count_) {
         case 0:
             break;
-        case 1:
+        case 1: {
             JL_GC_PUSH1(&protected_objects_[0]);
             break;
-        case 2:
+        }
+        case 2: {
             JL_GC_PUSH2(&protected_objects_[0], &protected_objects_[1]);
             break;
-        case 3:
+        }
+        case 3: {
             JL_GC_PUSH3(&protected_objects_[0], &protected_objects_[1],
                         &protected_objects_[2]);
             break;
-        case 4:
+        }
+        case 4: {
             JL_GC_PUSH4(&protected_objects_[0], &protected_objects_[1],
                         &protected_objects_[2], &protected_objects_[3]);
             break;
-        case 5:
+        }
+        case 5: {
             JL_GC_PUSH5(&protected_objects_[0], &protected_objects_[1],
                         &protected_objects_[2], &protected_objects_[3],
                         &protected_objects_[4]);
             break;
-        case 6:
+        }
+        case 6: {
             JL_GC_PUSH6(&protected_objects_[0], &protected_objects_[1],
                         &protected_objects_[2], &protected_objects_[3],
                         &protected_objects_[4], &protected_objects_[5]);
             break;
-        case 7:
+        }
+        case 7: {
             JL_GC_PUSH7(&protected_objects_[0], &protected_objects_[1],
                         &protected_objects_[2], &protected_objects_[3],
                         &protected_objects_[4], &protected_objects_[5],
                         &protected_objects_[6]);
             break;
-        case 8:
+        }
+        case 8: {
             JL_GC_PUSH8(&protected_objects_[0], &protected_objects_[1],
                         &protected_objects_[2], &protected_objects_[3],
                         &protected_objects_[4], &protected_objects_[5],
                         &protected_objects_[6], &protected_objects_[7]);
             break;
-        default:
+        }
+        default: {
             // For more than 8 objects, use PUSHARGS
-            JL_GC_PUSHARGS(protected_objects_.data(), count_);
+            jl_value_t** args = protected_objects_.data();
+            JL_GC_PUSHARGS(args, count_);
             break;
+        }
     }
 }
 

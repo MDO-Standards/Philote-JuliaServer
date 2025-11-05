@@ -6,9 +6,10 @@
 
 #include <google/protobuf/struct.pb.h>
 #include <julia.h>
-#include <philote/variable.h>
 
 #include <string>
+
+#include <variable.h>
 
 namespace philote {
 namespace julia {
