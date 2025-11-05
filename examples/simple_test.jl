@@ -16,37 +16,40 @@ end
 # Philote interface functions
 
 function setup!(discipline::SimpleDiscipline)
-    println("SimpleDiscipline.setup!() called")
+    # println("SimpleDiscipline.setup!() called")  # Disabled to test if println is causing hang
     discipline.inputs["x"] = ([1], "m")
     discipline.outputs["y"] = ([1], "m")
+    return nothing
 end
 
 function set_options!(discipline::SimpleDiscipline, options::Dict{String,Any})
-    println("SimpleDiscipline.set_options!() called")
+    # println disabled to avoid I/O blocking
     if haskey(options, "scale_factor")
         discipline.scale_factor = Float64(options["scale_factor"])
     end
 end
 
 function compute(discipline::SimpleDiscipline, inputs::Dict{String,Vector{Float64}})
-    println("SimpleDiscipline.compute() called")
+    # println disabled to avoid I/O blocking
     x = inputs["x"][1]
     y = discipline.scale_factor * x
     return Dict("y" => [y])
 end
 
 function declare_partials!(discipline::SimpleDiscipline, output::String, input::String)
-    println("SimpleDiscipline.declare_partials!() called: ∂$output/∂$input")
+    # println disabled to avoid I/O blocking
     push!(discipline.partials, (output, input))
 end
 
 function compute_partials(discipline::SimpleDiscipline, inputs::Dict{String,Vector{Float64}})
-    println("SimpleDiscipline.compute_partials() called")
-    return Dict("y" => Dict("x" => [discipline.scale_factor]))
+    # println disabled to avoid I/O blocking
+    # Use flat dict with encoded keys: "output~input" => partial_array
+    # NOTE: Variable names CANNOT contain '~' character (reserved as delimiter)
+    return Dict("y~x" => [discipline.scale_factor])
 end
 
 # Simple function to test if we can call Julia functions
 function greet()
-    println("Hello from Julia!")
+    # println disabled to avoid I/O blocking
     return "Success"
 end

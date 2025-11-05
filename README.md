@@ -83,6 +83,44 @@ See `examples/` directory for sample configurations:
 
 This ensures Julia is never called from multiple threads concurrently, which would cause undefined behavior.
 
+## Julia Discipline Interface
+
+### Variable Naming Restrictions
+
+**IMPORTANT**: Variable names (inputs/outputs) **CANNOT contain the tilde character (`~`)**, as it is used as a delimiter in the partials encoding format. This is a limitation of the current implementation.
+
+### Partials Format and Registration
+
+#### Automatic Partials Registration
+
+The server **automatically declares partials** for all output-input pairs during `setup!()`. This means:
+- Partials metadata (shape, etc.) is computed based on variable shapes
+- The client receives this metadata and preallocates storage
+- You don't need to manually declare which partials exist
+
+#### compute_partials() Return Format
+
+The `compute_partials` function must return a flat dictionary with encoded keys:
+- Format: `Dict{String, Vector{Float64}}`
+- Keys use format: `"output~input"` (e.g., `"y~x"` for ∂y/∂x)
+- The array shape must match the shape computed from output and input variable shapes
+- Example:
+  ```julia
+  function compute_partials(discipline, inputs)
+      # Return partials as flat dict with encoded keys
+      # For scalar output "lift" and scalar input "alpha": ∂lift/∂alpha is a scalar [1] shape
+      # For vector output "forces" [3] and scalar input "alpha": ∂forces/∂alpha is a vector [3] shape
+      # For scalar output "lift" and vector input "state" [5]: ∂lift/∂state is a vector [5] shape
+      return Dict(
+          "lift~alpha" => [∂lift_∂alpha],           # scalar ∂/∂ scalar = scalar
+          "drag~alpha" => [∂drag_∂alpha],           # scalar ∂/∂ scalar = scalar
+          "lift~velocity" => [∂lift_∂velocity]      # scalar ∂/∂ scalar = scalar
+      )
+  end
+  ```
+
+**Rationale**: Nested dict creation in Julia (e.g., `Dict("y" => Dict("x" => [1.0]))`) causes hangs when called from C++ via `jl_call()` in the single-threaded executor pattern. Using flat dicts with encoded keys avoids this issue.
+
 ## Testing
 
 Build and run tests:

@@ -72,16 +72,26 @@ std::string GetJuliaExceptionString() {
 
 jl_value_t* VariablesToJuliaDict(const philote::Variables& vars) {
     // Get Dict constructor
-    jl_function_t* dict_fn = jl_get_function(jl_base_module, "Dict");
-    if (!dict_fn) {
-        throw std::runtime_error("Could not find Base.Dict function");
+    // Create empty Dict{String, Vector{Float64}} with proper type parameters
+    // First get the Dict type constructor
+    jl_value_t* dict_type = jl_get_global(jl_base_module, jl_symbol("Dict"));
+    if (!dict_type) {
+        throw std::runtime_error("Could not find Base.Dict type");
     }
 
-    // Create empty Dict{String, Array{Float64}}
-    jl_value_t* dict = jl_call0(dict_fn);
+    // Create the parameterized type Dict{String, Vector{Float64}}
+    jl_value_t* string_type = reinterpret_cast<jl_value_t*>(jl_string_type);
+    jl_value_t* vector_float64_type = jl_apply_array_type(
+        reinterpret_cast<jl_value_t*>(jl_float64_type), 1);
+
+    jl_value_t* dict_params[2] = {string_type, vector_float64_type};
+    jl_value_t* dict_parameterized = jl_apply_type(dict_type, dict_params, 2);
     CheckJuliaException();
 
-    GCProtect protect_dict(dict);
+    // Create empty instance of Dict{String, Vector{Float64}}
+    jl_value_t* dict = jl_call0(reinterpret_cast<jl_function_t*>(dict_parameterized));
+    CheckJuliaException();
+
 
     // Get setindex! function for adding to dict
     jl_function_t* setindex_fn =
@@ -99,11 +109,9 @@ jl_value_t* VariablesToJuliaDict(const philote::Variables& vars) {
         // Create Julia array type
         jl_value_t* array_type = jl_apply_array_type(
             reinterpret_cast<jl_value_t*>(jl_float64_type), shape.size());
-        GCProtect protect_type(array_type);
 
         // Create dimensions tuple
         jl_svec_t* dims = jl_alloc_svec(shape.size());
-        GCProtect protect_dims(reinterpret_cast<jl_value_t*>(dims));
 
         for (size_t i = 0; i < shape.size(); ++i) {
             jl_svecset(dims, i, jl_box_int64(shape[i]));
@@ -111,7 +119,6 @@ jl_value_t* VariablesToJuliaDict(const philote::Variables& vars) {
 
         // Create array
         jl_array_t* jl_array = jl_alloc_array_1d(array_type, total_size);
-        GCProtect protect_array(reinterpret_cast<jl_value_t*>(jl_array));
 
         // Copy data (C++ row-major to Julia column-major)
         double* jl_data = reinterpret_cast<double*>(jl_array_data(jl_array, double));
@@ -155,7 +162,6 @@ jl_value_t* VariablesToJuliaDict(const philote::Variables& vars) {
 
         // Add to dictionary: dict[name] = array
         jl_value_t* key = jl_cstr_to_string(name.c_str());
-        GCProtect protect_key(key);
 
         jl_call3(setindex_fn, dict, reinterpret_cast<jl_value_t*>(jl_array),
                  key);
@@ -183,14 +189,12 @@ philote::Variables JuliaDictToVariables(jl_value_t* dict) {
 
     jl_value_t* keys = jl_call1(keys_fn, dict);
     CheckJuliaException();
-    GCProtect protect_keys(keys);
 
     // Convert keys to array
     jl_function_t* collect_fn = jl_get_function(jl_base_module, "collect");
     jl_array_t* keys_array =
         reinterpret_cast<jl_array_t*>(jl_call1(collect_fn, keys));
     CheckJuliaException();
-    GCProtect protect_keys_array(reinterpret_cast<jl_value_t*>(keys_array));
 
     size_t num_keys = jl_array_len(keys_array);
 
@@ -257,48 +261,60 @@ philote::Variables JuliaDictToVariables(jl_value_t* dict) {
 }
 
 philote::Partials JuliaDictToPartials(jl_value_t* dict) {
+    std::cerr << "[DEBUG] JuliaDictToPartials: Starting..." << std::endl;
+    std::cerr.flush();
     if (!dict) {
         throw std::runtime_error("Expected Julia Dict for partials, got null");
     }
 
     philote::Partials partials;
 
-    // Get keys
+    std::cerr << "[DEBUG] JuliaDictToPartials: Getting Julia functions..." << std::endl;
+    std::cerr.flush();
+    // Expect flat dict format: Dict{String, Vector{Float64}}
+    // Keys are encoded as "output~input"
+    // NOTE: Variable names cannot contain '~' (reserved as delimiter)
     jl_function_t* keys_fn = jl_get_function(jl_base_module, "keys");
     jl_function_t* getindex_fn = jl_get_function(jl_base_module, "getindex");
     jl_function_t* collect_fn = jl_get_function(jl_base_module, "collect");
 
+    std::cerr << "[DEBUG] JuliaDictToPartials: Getting keys..." << std::endl;
+    std::cerr.flush();
     jl_value_t* keys = jl_call1(keys_fn, dict);
     CheckJuliaException();
-    GCProtect protect_keys(keys);
 
     jl_array_t* keys_array =
         reinterpret_cast<jl_array_t*>(jl_call1(collect_fn, keys));
     CheckJuliaException();
-    GCProtect protect_keys_array(reinterpret_cast<jl_value_t*>(keys_array));
 
     size_t num_keys = jl_array_len(keys_array);
+    std::cerr << "[DEBUG] JuliaDictToPartials: Found " << num_keys << " partial(s)" << std::endl;
+    std::cerr.flush();
 
     for (size_t i = 0; i < num_keys; ++i) {
         jl_value_t* key = jl_array_ptr_ref(keys_array, i);
-
-        // Key should be a tuple (output, input)
-        if (!jl_is_tuple(key) || jl_nfields(key) != 2) {
-            throw std::runtime_error(
-                "Partials dict key must be a 2-tuple (output, input)");
+        if (!jl_is_string(key)) {
+            throw std::runtime_error("Partials key must be a string");
         }
 
-        jl_value_t* output_name = jl_fieldref(key, 0);
-        jl_value_t* input_name = jl_fieldref(key, 1);
+        std::string encoded_key = jl_string_ptr(key);
+        std::cerr << "[DEBUG] JuliaDictToPartials: Processing key: " << encoded_key << std::endl;
+        std::cerr.flush();
 
-        if (!jl_is_string(output_name) || !jl_is_string(input_name)) {
-            throw std::runtime_error("Partials tuple elements must be strings");
+        // Parse "output~input" format (~ is reserved, cannot be in variable names)
+        size_t tilde_pos = encoded_key.find('~');
+        if (tilde_pos == std::string::npos) {
+            throw std::runtime_error("Partials key must be in format 'output~input' (with tilde delimiter), got: " + encoded_key);
         }
 
-        std::string output = jl_string_ptr(output_name);
-        std::string input = jl_string_ptr(input_name);
+        std::string output_name = encoded_key.substr(0, tilde_pos);
+        std::string input_name = encoded_key.substr(tilde_pos + 1);
 
-        // Get value (array)
+        std::cerr << "[DEBUG] JuliaDictToPartials:   Parsed as output=" << output_name
+                  << ", input=" << input_name << std::endl;
+        std::cerr.flush();
+
+        // Get array value
         jl_value_t* value = jl_call2(getindex_fn, dict, key);
         CheckJuliaException();
 
@@ -308,39 +324,54 @@ philote::Partials JuliaDictToPartials(jl_value_t* dict) {
 
         jl_array_t* jl_array = reinterpret_cast<jl_array_t*>(value);
 
-        // Convert array to Variable (same as JuliaDictToVariables)
+        // Convert array to Variable
         size_t ndims = jl_array_ndims(jl_array);
         std::vector<size_t> shape(ndims);
         for (size_t d = 0; d < ndims; ++d) {
             shape[d] = jl_array_dim(jl_array, d);
         }
 
+        std::cerr << "[DEBUG] JuliaDictToPartials: Array has " << ndims << " dimensions, shape = [";
+        for (size_t d = 0; d < ndims; ++d) {
+            if (d > 0) std::cerr << ", ";
+            std::cerr << shape[d];
+        }
+        std::cerr << "]" << std::endl;
+        std::cerr.flush();
+
         double* jl_data = reinterpret_cast<double*>(jl_array_data(jl_array, double));
         size_t total_size = jl_array_len(jl_array);
 
+        std::cerr << "[DEBUG] JuliaDictToPartials: total_size = " << total_size << std::endl;
+        std::cerr.flush();
+
         philote::Variable var(philote::kOutput, shape);
+        std::cerr << "[DEBUG] JuliaDictToPartials: Created Variable with Size() = " << var.Size() << std::endl;
+        std::cerr.flush();
 
         if (ndims == 1) {
-            for (size_t i = 0; i < total_size; ++i) {
-                var(i) = jl_data[i];
+            for (size_t k = 0; k < total_size; ++k) {
+                var(k) = jl_data[k];
             }
         } else if (ndims == 2) {
             size_t rows = shape[0];
             size_t cols = shape[1];
-            for (size_t i = 0; i < rows; ++i) {
-                for (size_t j = 0; j < cols; ++j) {
-                    var(i * cols + j) = jl_data[j * rows + i];
+            for (size_t r = 0; r < rows; ++r) {
+                for (size_t c = 0; c < cols; ++c) {
+                    var(r * cols + c) = jl_data[c * rows + r];
                 }
             }
         } else {
-            for (size_t i = 0; i < total_size; ++i) {
-                var(i) = jl_data[i];
+            for (size_t k = 0; k < total_size; ++k) {
+                var(k) = jl_data[k];
             }
         }
 
-        partials[{output, input}] = var;
+        partials[{output_name, input_name}] = var;
     }
 
+    std::cerr << "[DEBUG] JuliaDictToPartials: Complete!" << std::endl;
+    std::cerr.flush();
     return partials;
 }
 
@@ -353,7 +384,6 @@ jl_value_t* ProtobufStructToJuliaDict(const google::protobuf::Struct& s) {
 
     jl_value_t* dict = jl_call0(dict_fn);
     CheckJuliaException();
-    GCProtect protect_dict(dict);
 
     jl_function_t* setindex_fn =
         jl_get_function(jl_base_module, "setindex!");
@@ -361,7 +391,6 @@ jl_value_t* ProtobufStructToJuliaDict(const google::protobuf::Struct& s) {
     // Iterate through struct fields
     for (const auto& [key, value] : s.fields()) {
         jl_value_t* jl_key = jl_cstr_to_string(key.c_str());
-        GCProtect protect_key(jl_key);
 
         jl_value_t* jl_value = nullptr;
 
@@ -382,7 +411,6 @@ jl_value_t* ProtobufStructToJuliaDict(const google::protobuf::Struct& s) {
         }
 
         if (jl_value) {
-            GCProtect protect_value(jl_value);
             jl_call3(setindex_fn, dict, jl_value, jl_key);
             CheckJuliaException();
         }
