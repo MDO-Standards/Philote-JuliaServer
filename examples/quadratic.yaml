@@ -1,0 +1,11 @@
+# Example configuration for Quadratic implicit discipline
+
+discipline:
+  kind: implicit
+  julia_file: ../../Philote.jl/examples/quadratic.jl
+  julia_type: QuadraticDiscipline
+  options: {}
+
+server:
+  address: "[::]:50052"
+  max_threads: 10

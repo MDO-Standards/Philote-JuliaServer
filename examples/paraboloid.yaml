@@ -1,0 +1,11 @@
+# Example configuration for Paraboloid explicit discipline
+
+discipline:
+  kind: explicit
+  julia_file: ../../Philote.jl/examples/paraboloid.jl
+  julia_type: ParaboloidDiscipline
+  options: {}
+
+server:
+  address: "[::]:50051"
+  max_threads: 10
