@@ -41,6 +41,7 @@ void JuliaExecutor::ExecutorLoop() {
     // Julia runtime was initialized on main thread, but this thread needs adoption
     jl_adopt_thread();
     std::cout << "[EXECUTOR] Thread adopted by Julia" << std::endl;
+    std::cout << "[EXECUTOR] Thread ID: " << std::this_thread::get_id() << std::endl;
 
     // This thread handles ALL Julia calls - no concurrency!
     while (true) {

@@ -15,6 +15,10 @@ std::once_flag JuliaRuntime::init_flag_;
 JuliaRuntime::JuliaRuntime() {
     std::call_once(init_flag_, []() {
         jl_init();
+
+        // Prevent BLAS from spawning extra threads
+        // This avoids thread explosion when Julia does linear algebra
+        jl_eval_string("using LinearAlgebra; BLAS.set_num_threads(1)");
     });
     initialized_.store(true);
 }
