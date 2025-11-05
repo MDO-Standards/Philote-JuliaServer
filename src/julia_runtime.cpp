@@ -3,6 +3,7 @@
 
 #include "julia_runtime.h"
 
+#include <iostream>
 #include <stdexcept>
 
 namespace philote {
@@ -50,11 +51,34 @@ jl_module_t* JuliaRuntime::LoadJuliaFile(const std::string& filepath) {
     // Check for exceptions
     if (jl_exception_occurred()) {
         jl_value_t* ex = jl_exception_occurred();
-        std::string error_msg = "Julia error loading file: ";
-        error_msg += jl_typeof_str(ex);
-        jl_call2(jl_get_function(jl_base_module, "showerror"),
-                 jl_stderr_obj(), ex);
-        throw std::runtime_error(error_msg);
+
+        // Print full error to stderr using Julia's showerror
+        jl_function_t* showerror_fn = jl_get_function(jl_base_module, "showerror");
+        if (showerror_fn) {
+            std::cerr << "\n[Julia Error] Loading file " << filepath << ":\n";
+            std::cerr.flush();
+            jl_call2(showerror_fn, jl_stderr_obj(), ex);
+            std::cerr << "\n";
+            std::cerr.flush();
+        }
+
+        // Also get full error message using sprint(showerror)
+        jl_function_t* sprint_fn = jl_get_function(jl_base_module, "sprint");
+        std::string detailed_msg;
+        if (sprint_fn && showerror_fn) {
+            // Clear exception before calling sprint
+            jl_exception_clear();
+            jl_value_t* msg_str = jl_call2(sprint_fn, reinterpret_cast<jl_value_t*>(showerror_fn), ex);
+            if (!jl_exception_occurred() && msg_str && jl_is_string(msg_str)) {
+                detailed_msg = jl_string_ptr(msg_str);
+            }
+        }
+
+        if (detailed_msg.empty()) {
+            detailed_msg = std::string("Julia error loading file: ") + jl_typeof_str(ex);
+        }
+
+        throw std::runtime_error(detailed_msg);
     }
 
     // Return Main module (where the file was included)

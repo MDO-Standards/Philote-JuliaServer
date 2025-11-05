@@ -44,21 +44,43 @@ void JuliaExplicitDiscipline::Initialize() {
 
 void JuliaExplicitDiscipline::LoadJuliaDiscipline() {
     JuliaExecutor::GetInstance().Submit([this]() {
+        std::cerr << "[DEBUG] LoadJuliaDiscipline: Loading Julia file: " << config_.julia_file << std::endl;
+        std::cerr.flush();
+
         // Load Julia file
         module_ = JuliaRuntime::GetInstance().LoadJuliaFile(config_.julia_file);
+        std::cerr << "[DEBUG] LoadJuliaDiscipline: Julia file loaded, module = " << module_ << std::endl;
+        std::cerr.flush();
 
         // Get Julia type
+        std::cerr << "[DEBUG] LoadJuliaDiscipline: Getting Julia type: " << config_.julia_type << std::endl;
+        std::cerr.flush();
+
         jl_value_t* type =
             jl_get_global(module_, jl_symbol(config_.julia_type.c_str()));
         if (!type) {
             throw std::runtime_error("Julia type not found: " + config_.julia_type);
         }
 
+        std::cerr << "[DEBUG] LoadJuliaDiscipline: Got type, type = " << type << std::endl;
+        std::cerr << "[DEBUG] LoadJuliaDiscipline: Type name: " << jl_typeof_str(type) << std::endl;
+        std::cerr.flush();
+
         GCProtect protect_type(type);
 
         // Instantiate discipline (call constructor)
+        std::cerr << "[DEBUG] LoadJuliaDiscipline: Calling constructor (jl_call0)..." << std::endl;
+        std::cerr.flush();
+
         discipline_obj_ = jl_call0(reinterpret_cast<jl_function_t*>(type));
+
+        std::cerr << "[DEBUG] LoadJuliaDiscipline: Constructor called, checking for exception..." << std::endl;
+        std::cerr.flush();
+
         CheckJuliaException();
+
+        std::cerr << "[DEBUG] LoadJuliaDiscipline: No exception, discipline_obj_ = " << discipline_obj_ << std::endl;
+        std::cerr.flush();
 
         if (!discipline_obj_) {
             throw std::runtime_error("Failed to instantiate Julia discipline: " +
@@ -67,11 +89,17 @@ void JuliaExplicitDiscipline::LoadJuliaDiscipline() {
 
         // CRITICAL: Store module and discipline object as global Julia variables
         // This provides permanent GC rooting that works across all threads
+        std::cerr << "[DEBUG] LoadJuliaDiscipline: Storing in Julia globals..." << std::endl;
+        std::cerr.flush();
+
         jl_module_t* main_module = jl_main_module;
         jl_set_global(main_module, jl_symbol("_philote_discipline_module"),
                       reinterpret_cast<jl_value_t*>(module_));
         jl_set_global(main_module, jl_symbol("_philote_discipline_obj"),
                       discipline_obj_);
+
+        std::cerr << "[DEBUG] LoadJuliaDiscipline: Complete!" << std::endl;
+        std::cerr.flush();
     });
 }
 

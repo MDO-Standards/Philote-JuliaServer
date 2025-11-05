@@ -25,22 +25,46 @@ std::string GetJuliaExceptionString() {
         return "Unknown Julia exception";
     }
 
-    // Get exception type and message
-    std::string msg = "Julia exception: ";
-    msg += jl_typeof_str(ex);
+    // Get exception type
+    std::string msg = std::string(jl_typeof_str(ex));
 
-    // Try to get exception message if it's an ErrorException
+    std::cerr << "[DEBUG] Julia exception type: " << msg << std::endl;
+    std::cerr.flush();
+
+    // Try to get detailed error message using Julia's display system
+    // We need to be careful not to trigger another exception
     jl_function_t* sprint_fn = jl_get_function(jl_base_module, "sprint");
-    jl_function_t* showerror_fn =
-        jl_get_function(jl_base_module, "showerror");
+    jl_function_t* showerror_fn = jl_get_function(jl_base_module, "showerror");
 
     if (sprint_fn && showerror_fn) {
-        jl_value_t* msg_str =
-            jl_call2(sprint_fn, showerror_fn, ex);
-        if (msg_str && jl_is_string(msg_str)) {
-            msg += ": ";
-            msg += jl_string_ptr(msg_str);
+        std::cerr << "[DEBUG] Calling sprint(showerror, ex)..." << std::endl;
+        std::cerr.flush();
+
+        // Clear any previous exceptions before calling sprint
+        jl_exception_clear();
+
+        jl_value_t* msg_str = jl_call2(sprint_fn, reinterpret_cast<jl_value_t*>(showerror_fn), ex);
+
+        // Check if sprint itself threw an exception
+        if (jl_exception_occurred()) {
+            std::cerr << "[DEBUG] sprint(showerror) threw an exception, using basic error" << std::endl;
+            std::cerr.flush();
+            jl_exception_clear();
+            return msg;
         }
+
+        if (msg_str && jl_is_string(msg_str)) {
+            std::string detailed_msg = jl_string_ptr(msg_str);
+            std::cerr << "[DEBUG] Got detailed error message: " << detailed_msg << std::endl;
+            std::cerr.flush();
+            return detailed_msg;
+        } else {
+            std::cerr << "[DEBUG] sprint returned non-string result" << std::endl;
+            std::cerr.flush();
+        }
+    } else {
+        std::cerr << "[DEBUG] Could not find sprint or showerror functions" << std::endl;
+        std::cerr.flush();
     }
 
     return msg;

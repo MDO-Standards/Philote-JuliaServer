@@ -1,0 +1,10 @@
+Need to wrap these methods in JuliaExecutor::Submit():
+- Setup() 
+- SetupPartials()
+- ExtractIOMetadata()
+- ExtractPartialsMetadata()
+- ComputePartials()
+- SetOptions()
+- GetJuliaFunction() - actually this is called FROM other methods, so it's implicitly wrapped
+
+All these are currently being called from gRPC worker threads.
