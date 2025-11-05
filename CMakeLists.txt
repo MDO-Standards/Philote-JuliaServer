@@ -28,10 +28,7 @@ message(STATUS "Finding Julia 1.9+...")
 find_package(Julia 1.9 REQUIRED)
 
 message(STATUS "Finding yaml-cpp...")
-find_package(yaml-cpp CONFIG QUIET)
-if(NOT yaml-cpp_FOUND)
-    find_package(yaml-cpp REQUIRED)
-endif()
+find_package(yaml-cpp REQUIRED)
 
 # Display found versions
 message(STATUS "Julia version: ${Julia_VERSION}")
