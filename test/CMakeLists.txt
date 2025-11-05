@@ -2,6 +2,22 @@
 
 find_package(GTest REQUIRED)
 
+# Test helpers library
+add_library(julia_test_helpers STATIC
+    test_helpers.cpp
+)
+
+target_link_libraries(julia_test_helpers
+    PUBLIC
+        julia_wrapper
+        GTest::gtest
+)
+
+target_include_directories(julia_test_helpers
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Unit tests executable
 add_executable(julia_tests
     test_julia_runtime.cpp
@@ -12,6 +28,7 @@ add_executable(julia_tests
 
 target_link_libraries(julia_tests
     PRIVATE
+        julia_test_helpers
         julia_wrapper
         GTest::gtest_main
         GTest::gmock
@@ -28,6 +45,7 @@ add_executable(julia_integration_tests
 
 target_link_libraries(julia_integration_tests
     PRIVATE
+        julia_test_helpers
         julia_wrapper
         GTest::gtest_main
 )
