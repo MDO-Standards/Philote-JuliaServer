@@ -9,6 +9,7 @@
 #include <memory>
 
 #include "julia_config.h"
+#include "julia_executor.h"
 #include "julia_explicit_discipline.h"
 #include "julia_implicit_discipline.h"
 #include "julia_runtime.h"
@@ -53,10 +54,14 @@ int main(int argc, char** argv) {
         std::cout << "  Server address: " << config.server.address << std::endl;
         std::cout << "  Max threads: " << config.server.max_threads << std::endl;
 
-        // 2. Initialize Julia runtime (BEFORE creating gRPC server)
+        // 2. Initialize Julia runtime and single-threaded executor
         std::cout << "\nInitializing Julia runtime..." << std::endl;
         JuliaRuntime::GetInstance();
         std::cout << "Julia runtime initialized successfully." << std::endl;
+
+        std::cout << "Starting Julia executor thread..." << std::endl;
+        philote::julia::JuliaExecutor::GetInstance().Start();
+        std::cout << "Julia executor started (ALL Julia calls on single thread)." << std::endl;
 
         // 3. Create discipline wrapper and build server
         std::cout << "\nLoading Julia discipline..." << std::endl;
@@ -69,7 +74,8 @@ int main(int argc, char** argv) {
         builder.AddListeningPort(config.server.address,
                                 grpc::InsecureServerCredentials());
 
-        // CRITICAL: Limit thread pool size for predictable Julia thread management
+        // Allow gRPC to use multiple threads for network I/O
+        // Julia calls are serialized via JuliaExecutor (single-threaded)
         grpc::ResourceQuota quota;
         quota.SetMaxThreads(config.server.max_threads);
         builder.SetResourceQuota(quota);

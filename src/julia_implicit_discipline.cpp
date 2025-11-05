@@ -45,7 +45,13 @@ void JuliaImplicitDiscipline::LoadJuliaDiscipline() {
         throw std::runtime_error("Failed to instantiate Julia discipline");
     }
 
-    // GC protection handled during server lifetime
+    // CRITICAL: Store module and discipline object as global Julia variables
+    // This provides permanent GC rooting that works across all threads
+    jl_module_t* main_module = jl_main_module;
+    jl_set_global(main_module, jl_symbol("_philote_discipline_module"),
+                  reinterpret_cast<jl_value_t*>(module_));
+    jl_set_global(main_module, jl_symbol("_philote_discipline_obj"),
+                  discipline_obj_);
 }
 
 void JuliaImplicitDiscipline::Setup() {

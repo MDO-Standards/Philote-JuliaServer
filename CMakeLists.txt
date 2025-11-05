@@ -43,6 +43,7 @@ add_library(julia_wrapper
     src/julia_gc.cpp
     src/julia_convert.cpp
     src/julia_config.cpp
+    src/julia_executor.cpp
     src/julia_explicit_discipline.cpp
     src/julia_implicit_discipline.cpp
 )

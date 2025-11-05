@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 #include "julia_convert.h"
+#include "julia_executor.h"
 #include "julia_gc.h"
 #include "julia_runtime.h"
 #include "julia_thread.h"
@@ -39,32 +40,36 @@ void JuliaExplicitDiscipline::Initialize() {
 }
 
 void JuliaExplicitDiscipline::LoadJuliaDiscipline() {
-    JuliaThreadGuard guard;  // Adopt main thread
+    JuliaExecutor::GetInstance().Submit([this]() {
+        // Load Julia file
+        module_ = JuliaRuntime::GetInstance().LoadJuliaFile(config_.julia_file);
 
-    // Load Julia file
-    module_ = JuliaRuntime::GetInstance().LoadJuliaFile(config_.julia_file);
+        // Get Julia type
+        jl_value_t* type =
+            jl_get_global(module_, jl_symbol(config_.julia_type.c_str()));
+        if (!type) {
+            throw std::runtime_error("Julia type not found: " + config_.julia_type);
+        }
 
-    // Get Julia type
-    jl_value_t* type =
-        jl_get_global(module_, jl_symbol(config_.julia_type.c_str()));
-    if (!type) {
-        throw std::runtime_error("Julia type not found: " + config_.julia_type);
-    }
+        GCProtect protect_type(type);
 
-    GCProtect protect_type(type);
+        // Instantiate discipline (call constructor)
+        discipline_obj_ = jl_call0(reinterpret_cast<jl_function_t*>(type));
+        CheckJuliaException();
 
-    // Instantiate discipline (call constructor)
-    discipline_obj_ = jl_call0(reinterpret_cast<jl_function_t*>(type));
-    CheckJuliaException();
+        if (!discipline_obj_) {
+            throw std::runtime_error("Failed to instantiate Julia discipline: " +
+                                     config_.julia_type);
+        }
 
-    if (!discipline_obj_) {
-        throw std::runtime_error("Failed to instantiate Julia discipline: " +
-                                 config_.julia_type);
-    }
-
-    // Protect from GC (Julia 1.12 API - use 2-argument version)
-    // We'll keep a permanent reference by not letting the protect go out of scope
-    // Note: In practice, discipline_obj_ stays alive for server lifetime
+        // CRITICAL: Store module and discipline object as global Julia variables
+        // This provides permanent GC rooting that works across all threads
+        jl_module_t* main_module = jl_main_module;
+        jl_set_global(main_module, jl_symbol("_philote_discipline_module"),
+                      reinterpret_cast<jl_value_t*>(module_));
+        jl_set_global(main_module, jl_symbol("_philote_discipline_obj"),
+                      discipline_obj_);
+    });
 }
 
 void JuliaExplicitDiscipline::Setup() {
@@ -277,37 +282,30 @@ void JuliaExplicitDiscipline::ExtractPartialsMetadata() {
 
 void JuliaExplicitDiscipline::Compute(const philote::Variables& inputs,
                                       philote::Variables& outputs) {
-    // CRITICAL: Adopt this gRPC worker thread
-    JuliaThreadGuard guard;
+    // Execute on dedicated Julia thread - NO CONCURRENCY
+    outputs = JuliaExecutor::GetInstance().Submit([this, &inputs]() {
+        // All Julia calls happen on single executor thread
+        GCProtect protect(discipline_obj_);
 
-    // CRITICAL: Serialize Julia calls for thread safety
-    std::lock_guard<std::mutex> lock(compute_mutex_);
+        jl_value_t* inputs_dict = VariablesToJuliaDict(inputs);
+        GCProtect protect_inputs(inputs_dict);
 
-    // Protect Julia objects from GC
-    GCProtect protect(discipline_obj_);
+        jl_function_t* compute_fn = GetJuliaFunction("compute");
+        if (!compute_fn) {
+            throw std::runtime_error(
+                "Julia discipline missing required function: compute()");
+        }
 
-    // Convert C++ Variables to Julia Dict
-    jl_value_t* inputs_dict = VariablesToJuliaDict(inputs);
-    GCProtect protect_inputs(inputs_dict);
+        jl_value_t* result = jl_call2(compute_fn, discipline_obj_, inputs_dict);
+        CheckJuliaException();
 
-    // Call Julia compute function
-    jl_function_t* compute_fn = GetJuliaFunction("compute");
-    if (!compute_fn) {
-        throw std::runtime_error(
-            "Julia discipline missing required function: compute()");
-    }
+        if (!result) {
+            throw std::runtime_error("Julia compute() returned null");
+        }
 
-    jl_value_t* result = jl_call2(compute_fn, discipline_obj_, inputs_dict);
-    CheckJuliaException();
-
-    if (!result) {
-        throw std::runtime_error("Julia compute() returned null");
-    }
-
-    GCProtect protect_result(result);
-
-    // Convert Julia Dict back to C++ Variables
-    outputs = JuliaDictToVariables(result);
+        GCProtect protect_result(result);
+        return JuliaDictToVariables(result);
+    });
 }
 
 void JuliaExplicitDiscipline::ComputePartials(const philote::Variables& inputs,
@@ -364,6 +362,8 @@ void JuliaExplicitDiscipline::SetOptions(
 
 jl_function_t* JuliaExplicitDiscipline::GetJuliaFunction(
     const std::string& name) {
+    // Single-threaded server: safe to access module_ directly
+    // Module is permanently rooted via Julia global variables
     jl_function_t* fn = jl_get_function(module_, name.c_str());
     return fn;
 }
