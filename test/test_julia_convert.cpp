@@ -19,7 +19,7 @@ TEST(JuliaConvertTest, RoundtripScalar) {
     JuliaThreadGuard guard;
 
     Variables vars;
-    vars["x"] = Variable({1});
+    vars["x"] = Variable(philote::kOutput, {1});
     vars["x"](0) = 42.0;
 
     jl_value_t* dict = VariablesToJuliaDict(vars);
@@ -37,7 +37,7 @@ TEST(JuliaConvertTest, RoundtripVector) {
     JuliaThreadGuard guard;
 
     Variables vars;
-    vars["vec"] = Variable({3});
+    vars["vec"] = Variable(philote::kOutput, {3});
     vars["vec"](0) = 1.0;
     vars["vec"](1) = 2.0;
     vars["vec"](2) = 3.0;

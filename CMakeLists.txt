@@ -28,7 +28,10 @@ message(STATUS "Finding Julia 1.9+...")
 find_package(Julia 1.9 REQUIRED)
 
 message(STATUS "Finding yaml-cpp...")
-find_package(yaml-cpp REQUIRED)
+find_package(yaml-cpp CONFIG QUIET)
+if(NOT yaml-cpp_FOUND)
+    find_package(yaml-cpp REQUIRED)
+endif()
 
 # Display found versions
 message(STATUS "Julia version: ${Julia_VERSION}")
@@ -51,7 +54,6 @@ target_include_directories(julia_wrapper
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
-    PRIVATE
         ${Julia_INCLUDE_DIRS}
 )
 
@@ -60,7 +62,7 @@ target_link_libraries(julia_wrapper
         PhiloteCpp::PhiloteCpp
     PRIVATE
         Julia::Julia
-        yaml-cpp
+        yaml-cpp::yaml-cpp
 )
 
 # Set compiler warnings

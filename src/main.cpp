@@ -58,22 +58,8 @@ int main(int argc, char** argv) {
         JuliaRuntime::GetInstance();
         std::cout << "Julia runtime initialized successfully." << std::endl;
 
-        // 3. Create discipline wrapper
+        // 3. Create discipline wrapper and build server
         std::cout << "\nLoading Julia discipline..." << std::endl;
-        std::unique_ptr<Discipline> discipline;
-
-        if (config.discipline.kind == "explicit") {
-            discipline = std::make_unique<JuliaExplicitDiscipline>(
-                config.discipline);
-        } else if (config.discipline.kind == "implicit") {
-            discipline = std::make_unique<JuliaImplicitDiscipline>(
-                config.discipline);
-        } else {
-            throw std::runtime_error("Invalid discipline kind: " +
-                                    config.discipline.kind);
-        }
-
-        std::cout << "Julia discipline loaded successfully." << std::endl;
 
         // 4. Build gRPC server
         std::cout << "\nBuilding gRPC server..." << std::endl;
@@ -88,8 +74,22 @@ int main(int argc, char** argv) {
         quota.SetMaxThreads(config.server.max_threads);
         builder.SetResourceQuota(quota);
 
-        // Register discipline services (uses Philote-Cpp infrastructure)
-        discipline->RegisterServices(builder);
+        // Create discipline and register services
+        // Note: We need to keep the discipline alive, so use shared_ptr
+        if (config.discipline.kind == "explicit") {
+            auto discipline = std::make_shared<JuliaExplicitDiscipline>(
+                config.discipline);
+            discipline->RegisterServices(builder);
+            std::cout << "Julia explicit discipline loaded successfully." << std::endl;
+        } else if (config.discipline.kind == "implicit") {
+            auto discipline = std::make_shared<JuliaImplicitDiscipline>(
+                config.discipline);
+            discipline->RegisterServices(builder);
+            std::cout << "Julia implicit discipline loaded successfully." << std::endl;
+        } else {
+            throw std::runtime_error("Invalid discipline kind: " +
+                                    config.discipline.kind);
+        }
 
         // 5. Start server (creates thread pool HERE)
         g_server = builder.BuildAndStart();

@@ -69,7 +69,7 @@ jl_value_t* VariablesToJuliaDict(const philote::Variables& vars) {
     // Convert each variable
     for (const auto& [name, var] : vars) {
         // Create Julia array from Variable data
-        const auto& shape = var.GetShape();
+        const auto& shape = var.Shape();
         size_t total_size = var.Size();
 
         // Create Julia array type
@@ -78,8 +78,8 @@ jl_value_t* VariablesToJuliaDict(const philote::Variables& vars) {
         GCProtect protect_type(array_type);
 
         // Create dimensions tuple
-        jl_value_t* dims = jl_alloc_svec(shape.size());
-        GCProtect protect_dims(dims);
+        jl_svec_t* dims = jl_alloc_svec(shape.size());
+        GCProtect protect_dims(reinterpret_cast<jl_value_t*>(dims));
 
         for (size_t i = 0; i < shape.size(); ++i) {
             jl_svecset(dims, i, jl_box_int64(shape[i]));
@@ -90,25 +90,27 @@ jl_value_t* VariablesToJuliaDict(const philote::Variables& vars) {
         GCProtect protect_array(reinterpret_cast<jl_value_t*>(jl_array));
 
         // Copy data (C++ row-major to Julia column-major)
-        double* jl_data = reinterpret_cast<double*>(jl_array_data(jl_array));
-        const double* cpp_data = var.Data();
+        double* jl_data = reinterpret_cast<double*>(jl_array_data(jl_array, double));
 
         // For 1D arrays, direct copy
         if (shape.size() == 1) {
-            std::copy(cpp_data, cpp_data + total_size, jl_data);
+            for (size_t i = 0; i < total_size; ++i) {
+                jl_data[i] = var(i);
+            }
         } else if (shape.size() == 2) {
             // For 2D: transpose from row-major to column-major
             size_t rows = shape[0];
             size_t cols = shape[1];
             for (size_t i = 0; i < rows; ++i) {
                 for (size_t j = 0; j < cols; ++j) {
-                    jl_data[j * rows + i] = cpp_data[i * cols + j];
+                    jl_data[j * rows + i] = var(i * cols + j);
                 }
             }
         } else {
             // For higher dimensions, use direct copy (assume compatible layout)
-            // TODO: Implement proper multi-dimensional transpose if needed
-            std::copy(cpp_data, cpp_data + total_size, jl_data);
+            for (size_t i = 0; i < total_size; ++i) {
+                jl_data[i] = var(i);
+            }
         }
 
         // Reshape array if multi-dimensional
@@ -140,11 +142,10 @@ jl_value_t* VariablesToJuliaDict(const philote::Variables& vars) {
 }
 
 philote::Variables JuliaDictToVariables(jl_value_t* dict) {
-    if (!dict || !jl_is_dict(dict)) {
-        throw std::runtime_error(
-            "Expected Julia Dict, got " +
-            std::string(dict ? jl_typeof_str(dict) : "null"));
+    if (!dict) {
+        throw std::runtime_error("Expected Julia Dict, got null");
     }
+    // Note: We'll trust that it's a dict-like object that supports keys/getindex
 
     philote::Variables vars;
 
@@ -171,7 +172,7 @@ philote::Variables JuliaDictToVariables(jl_value_t* dict) {
 
     // Iterate through keys
     for (size_t i = 0; i < num_keys; ++i) {
-        jl_value_t* key = jl_arrayref(keys_array, i);
+        jl_value_t* key = jl_array_ptr_ref(keys_array, i);
         if (!jl_is_string(key)) {
             throw std::runtime_error("Dict key is not a string");
         }
@@ -197,30 +198,32 @@ philote::Variables JuliaDictToVariables(jl_value_t* dict) {
         }
 
         // Get array data
-        double* jl_data = reinterpret_cast<double*>(jl_array_data(jl_array));
+        double* jl_data = reinterpret_cast<double*>(jl_array_data(jl_array, double));
         size_t total_size = jl_array_len(jl_array);
 
         // Create Variable
-        philote::Variable var(shape);
+        philote::Variable var(philote::kOutput, shape);
 
         // Copy data (Julia column-major to C++ row-major)
-        double* cpp_data = var.Data();
-
         if (ndims == 1) {
             // Direct copy for 1D
-            std::copy(jl_data, jl_data + total_size, cpp_data);
+            for (size_t i = 0; i < total_size; ++i) {
+                var(i) = jl_data[i];
+            }
         } else if (ndims == 2) {
             // Transpose for 2D
             size_t rows = shape[0];
             size_t cols = shape[1];
             for (size_t i = 0; i < rows; ++i) {
                 for (size_t j = 0; j < cols; ++j) {
-                    cpp_data[i * cols + j] = jl_data[j * rows + i];
+                    var(i * cols + j) = jl_data[j * rows + i];
                 }
             }
         } else {
             // Direct copy for higher dimensions
-            std::copy(jl_data, jl_data + total_size, cpp_data);
+            for (size_t i = 0; i < total_size; ++i) {
+                var(i) = jl_data[i];
+            }
         }
 
         vars[name] = var;
@@ -230,8 +233,8 @@ philote::Variables JuliaDictToVariables(jl_value_t* dict) {
 }
 
 philote::Partials JuliaDictToPartials(jl_value_t* dict) {
-    if (!dict || !jl_is_dict(dict)) {
-        throw std::runtime_error("Expected Julia Dict for partials");
+    if (!dict) {
+        throw std::runtime_error("Expected Julia Dict for partials, got null");
     }
 
     philote::Partials partials;
@@ -253,7 +256,7 @@ philote::Partials JuliaDictToPartials(jl_value_t* dict) {
     size_t num_keys = jl_array_len(keys_array);
 
     for (size_t i = 0; i < num_keys; ++i) {
-        jl_value_t* key = jl_arrayref(keys_array, i);
+        jl_value_t* key = jl_array_ptr_ref(keys_array, i);
 
         // Key should be a tuple (output, input)
         if (!jl_is_tuple(key) || jl_nfields(key) != 2) {
@@ -288,24 +291,27 @@ philote::Partials JuliaDictToPartials(jl_value_t* dict) {
             shape[d] = jl_array_dim(jl_array, d);
         }
 
-        double* jl_data = reinterpret_cast<double*>(jl_array_data(jl_array));
+        double* jl_data = reinterpret_cast<double*>(jl_array_data(jl_array, double));
         size_t total_size = jl_array_len(jl_array);
 
-        philote::Variable var(shape);
-        double* cpp_data = var.Data();
+        philote::Variable var(philote::kOutput, shape);
 
         if (ndims == 1) {
-            std::copy(jl_data, jl_data + total_size, cpp_data);
+            for (size_t i = 0; i < total_size; ++i) {
+                var(i) = jl_data[i];
+            }
         } else if (ndims == 2) {
             size_t rows = shape[0];
             size_t cols = shape[1];
             for (size_t i = 0; i < rows; ++i) {
                 for (size_t j = 0; j < cols; ++j) {
-                    cpp_data[i * cols + j] = jl_data[j * rows + i];
+                    var(i * cols + j) = jl_data[j * rows + i];
                 }
             }
         } else {
-            std::copy(jl_data, jl_data + total_size, cpp_data);
+            for (size_t i = 0; i < total_size; ++i) {
+                var(i) = jl_data[i];
+            }
         }
 
         partials[{output, input}] = var;

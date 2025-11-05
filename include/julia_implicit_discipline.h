@@ -26,7 +26,7 @@ namespace julia {
 class JuliaImplicitDiscipline : public philote::ImplicitDiscipline {
 public:
     explicit JuliaImplicitDiscipline(const DisciplineConfig& config);
-    ~JuliaImplicitDiscipline() override;
+    ~JuliaImplicitDiscipline();
 
     JuliaImplicitDiscipline(const JuliaImplicitDiscipline&) = delete;
     JuliaImplicitDiscipline& operator=(const JuliaImplicitDiscipline&) = delete;

@@ -45,7 +45,7 @@ public:
     /**
      * @brief Destructor - cleans up Julia objects
      */
-    ~JuliaExplicitDiscipline() override;
+    ~JuliaExplicitDiscipline();
 
     // Prevent copying and moving
     JuliaExplicitDiscipline(const JuliaExplicitDiscipline&) = delete;

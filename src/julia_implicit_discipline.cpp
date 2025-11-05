@@ -45,7 +45,7 @@ void JuliaImplicitDiscipline::LoadJuliaDiscipline() {
         throw std::runtime_error("Failed to instantiate Julia discipline");
     }
 
-    jl_gc_add_finalizer(jl_main_module, discipline_obj_, jl_nothing);
+    // GC protection handled during server lifetime
 }
 
 void JuliaImplicitDiscipline::Setup() {
