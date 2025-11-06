@@ -24,8 +24,8 @@ endif()
 message(STATUS "Finding Philote-Cpp...")
 find_package(PhiloteCpp REQUIRED)
 
-message(STATUS "Finding Julia 1.10+...")
-find_package(Julia 1.10 REQUIRED)
+message(STATUS "Finding Julia 1.11+...")
+find_package(Julia 1.11 REQUIRED)
 
 message(STATUS "Finding yaml-cpp...")
 find_package(yaml-cpp REQUIRED)

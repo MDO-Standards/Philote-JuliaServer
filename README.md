@@ -10,14 +10,14 @@ Philote-JuliaServer enables Julia-based analysis disciplines to be hosted via gR
 
 ## Features
 
-- **Thread-Safe Julia Integration**: Uses Julia 1.10+ thread adoption for safe concurrent execution
+- **Thread-Safe Julia Integration**: Uses Julia 1.11+ thread adoption for safe concurrent execution
 - **Full Philote Support**: Both explicit and implicit disciplines
 - **YAML Configuration**: Simple configuration files define disciplines and server settings
 - **Leverages Philote-Cpp**: Reuses all gRPC, protobuf, and discipline infrastructure
 
 ## Prerequisites
 
-- **Julia 1.10+**: Required for thread adoption support and modern C API
+- **Julia 1.11+**: Required for modern C API with typed array data access
 - **Philote-Cpp**: Must be installed and available to CMake
 - **C++20 Compiler**: gcc-12+, clang-16+, or MSVC 19.34+
 - **CMake 3.23+**
