@@ -24,7 +24,7 @@ jobs:
           {c: clang-18, cpp: clang++-18}
         ]
         build_type: [Release, Debug]
-        julia_version: ["1.9", "1.10"]
+        julia_version: ["1.10"]
 
     runs-on: ${{ matrix.os }}
     steps:
