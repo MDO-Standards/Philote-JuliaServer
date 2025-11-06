@@ -25,6 +25,7 @@ add_executable(julia_tests
     test_julia_convert.cpp
     test_julia_config.cpp
     test_julia_executor.cpp
+    test_julia_explicit_discipline.cpp
 )
 
 target_link_libraries(julia_tests
