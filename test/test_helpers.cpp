@@ -6,90 +6,10 @@
 #include <cmath>
 #include <fstream>
 #include <sstream>
-#include <random>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <unistd.h>
-
-#include "julia_config.h"
 
 namespace philote {
 namespace julia {
 namespace test {
-
-// JuliaTestServerManager implementation
-
-JuliaTestServerManager::JuliaTestServerManager(const std::string& config_file, int port)
-    : config_file_(config_file), port_(port), started_(false) {
-
-    // Load configuration
-    DisciplineConfig config = LoadDisciplineConfig(config_file_);
-
-    // Override port if specified
-    if (port_ == 0) {
-        ServerConfig server_config = LoadServerConfig(config_file_);
-        // Parse port from address (e.g., "[::]:50051" -> 50051)
-        std::string addr = server_config.address;
-        size_t colon_pos = addr.rfind(':');
-        if (colon_pos != std::string::npos) {
-            port_ = std::stoi(addr.substr(colon_pos + 1));
-        } else {
-            port_ = 50051;  // Default
-        }
-    }
-
-    address_ = "localhost:" + std::to_string(port_);
-
-    // Create discipline
-    discipline_ = std::make_unique<JuliaExplicitDiscipline>(config);
-}
-
-JuliaTestServerManager::~JuliaTestServerManager() {
-    Stop();
-}
-
-void JuliaTestServerManager::Start() {
-    if (started_) {
-        return;
-    }
-
-    // Build server
-    grpc::ServerBuilder builder;
-    builder.AddListeningPort(address_, grpc::InsecureServerCredentials());
-
-    // Create and register service
-    server_ = std::make_unique<philote::DisciplineServer>(discipline_.get());
-    builder.RegisterService(server_.get());
-
-    // Start server in background thread
-    std::unique_ptr<grpc::Server> grpc_server = builder.BuildAndStart();
-
-    if (!grpc_server) {
-        throw std::runtime_error("Failed to start test server on " + address_);
-    }
-
-    // Move server to member (note: we're simplifying by not actually running async)
-    // For real async server, you'd need a thread
-
-    started_ = true;
-
-    // Give server time to start
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-}
-
-void JuliaTestServerManager::Stop() {
-    if (!started_) {
-        return;
-    }
-
-    // Stop server
-    if (server_) {
-        // Server cleanup
-        server_.reset();
-    }
-
-    started_ = false;
-}
 
 // Helper function implementations
 
@@ -132,83 +52,6 @@ std::string GetTestDisciplinePath(const std::string& filename) {
     }
 
     return file_path.string();
-}
-
-std::string CreateTempConfigFile(const std::string& julia_file,
-                                  const std::string& julia_type,
-                                  int port) {
-    if (port == 0) {
-        port = FindAvailablePort();
-    }
-
-    // Create temp YAML file
-    std::string temp_pattern = "/tmp/julia_config_XXXXXX.yaml";
-    char* temp_path = new char[temp_pattern.size() + 1];
-    std::strcpy(temp_path, temp_pattern.c_str());
-
-    int fd = mkstemp(temp_path);
-    if (fd == -1) {
-        delete[] temp_path;
-        throw std::runtime_error("Failed to create temporary config file");
-    }
-
-    std::string path(temp_path);
-    delete[] temp_path;
-    close(fd);
-
-    // Write YAML content
-    std::ofstream file(path);
-    if (!file.is_open()) {
-        throw std::runtime_error("Failed to open temporary config file: " + path);
-    }
-
-    file << "discipline:\n";
-    file << "  kind: explicit\n";
-    file << "  julia_file: " << julia_file << "\n";
-    file << "  julia_type: " << julia_type << "\n";
-    file << "\n";
-    file << "server:\n";
-    file << "  address: \"[::]:" << port << "\"\n";
-    file << "  max_threads: 10\n";
-
-    file.close();
-
-    return path;
-}
-
-int FindAvailablePort() {
-    // Create socket
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        throw std::runtime_error("Failed to create socket for port finding");
-    }
-
-    // Bind to port 0 (let OS choose)
-    struct sockaddr_in addr;
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY;
-    addr.sin_port = 0;
-
-    if (bind(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        close(sock);
-        throw std::runtime_error("Failed to bind socket for port finding");
-    }
-
-    // Get chosen port
-    socklen_t len = sizeof(addr);
-    if (getsockname(sock, (struct sockaddr*)&addr, &len) < 0) {
-        close(sock);
-        throw std::runtime_error("Failed to get socket name for port finding");
-    }
-
-    int port = ntohs(addr.sin_port);
-    close(sock);
-
-    return port;
-}
-
-std::shared_ptr<grpc::Channel> CreateTestChannel(const std::string& address) {
-    return grpc::CreateChannel(address, grpc::InsecureChannelCredentials());
 }
 
 bool VerifyGradientCorrectness(philote::Discipline* discipline,

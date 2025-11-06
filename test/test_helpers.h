@@ -8,13 +8,9 @@
 #include <string>
 #include <fstream>
 #include <filesystem>
-#include <thread>
-#include <chrono>
 
 #include "julia_runtime.h"
 #include "julia_executor.h"
-#include "julia_explicit_discipline.h"
-#include "discipline_server.h"
 #include "explicit.h"
 
 namespace philote {
@@ -22,59 +18,10 @@ namespace julia {
 namespace test {
 
 /**
- * @brief Helper class to manage a Julia discipline gRPC server for testing
- *
- * This class starts a Julia discipline server on a specified port and
- * ensures proper cleanup after tests complete.
- */
-class JuliaTestServerManager {
-public:
-    /**
-     * @brief Construct server manager with specified config file
-     * @param config_file Path to YAML configuration file
-     * @param port Optional port (if 0, uses port from config file)
-     */
-    explicit JuliaTestServerManager(const std::string& config_file, int port = 0);
-
-    /**
-     * @brief Destructor ensures server is stopped
-     */
-    ~JuliaTestServerManager();
-
-    /**
-     * @brief Start the gRPC server
-     */
-    void Start();
-
-    /**
-     * @brief Stop the gRPC server
-     */
-    void Stop();
-
-    /**
-     * @brief Get the server address (e.g., "localhost:50051")
-     */
-    std::string GetAddress() const { return address_; }
-
-    /**
-     * @brief Get the port number
-     */
-    int GetPort() const { return port_; }
-
-private:
-    std::string config_file_;
-    std::string address_;
-    int port_;
-    std::unique_ptr<philote::DisciplineServer> server_;
-    std::unique_ptr<JuliaExplicitDiscipline> discipline_;
-    bool started_;
-};
-
-/**
  * @brief Base test fixture that initializes Julia runtime
  *
  * This fixture ensures Julia runtime is initialized before tests run
- * and that the executor is properly started/stopped.
+ * and that the executor is properly started.
  */
 class JuliaTestFixture : public ::testing::Test {
 protected:
