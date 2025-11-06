@@ -45,14 +45,10 @@ TEST_F(JuliaExecutorTest, GetInstanceReturnsSameInstance) {
     EXPECT_EQ(&instance1, &instance2);
 }
 
-TEST_F(JuliaExecutorTest, IsRunningAfterStart) {
-    EXPECT_TRUE(executor_->IsRunning());
-}
-
 // Simple task submission tests
 
 TEST_F(JuliaExecutorTest, SubmitSimpleIntReturningTask) {
-    auto result = executor_->Submit<int>([]() {
+    auto result = executor_->Submit([]() {
         return 42;
     });
 
@@ -60,7 +56,7 @@ TEST_F(JuliaExecutorTest, SubmitSimpleIntReturningTask) {
 }
 
 TEST_F(JuliaExecutorTest, SubmitSimpleDoubleReturningTask) {
-    auto result = executor_->Submit<double>([]() {
+    auto result = executor_->Submit([]() {
         return 3.14159;
     });
 
@@ -68,7 +64,7 @@ TEST_F(JuliaExecutorTest, SubmitSimpleDoubleReturningTask) {
 }
 
 TEST_F(JuliaExecutorTest, SubmitSimpleStringReturningTask) {
-    auto result = executor_->Submit<std::string>([]() {
+    auto result = executor_->Submit([]() {
         return std::string("Hello from Julia thread");
     });
 
@@ -78,7 +74,7 @@ TEST_F(JuliaExecutorTest, SubmitSimpleStringReturningTask) {
 TEST_F(JuliaExecutorTest, SubmitVoidTask) {
     std::atomic<bool> executed{false};
 
-    executor_->Submit<void>([&executed]() {
+    executor_->Submit([&executed]() {
         executed = true;
     });
 
@@ -88,7 +84,7 @@ TEST_F(JuliaExecutorTest, SubmitVoidTask) {
 // Tests with Julia C API calls
 
 TEST_F(JuliaExecutorTest, SubmitTaskWithJuliaEval) {
-    auto result = executor_->Submit<int>([]() {
+    auto result = executor_->Submit([]() {
         jl_value_t* ret = jl_eval_string("2 + 2");
         if (!ret) {
             throw std::runtime_error("Julia eval failed");
@@ -100,7 +96,7 @@ TEST_F(JuliaExecutorTest, SubmitTaskWithJuliaEval) {
 }
 
 TEST_F(JuliaExecutorTest, SubmitTaskWithJuliaStringReturn) {
-    auto result = executor_->Submit<std::string>([]() {
+    auto result = executor_->Submit([]() {
         jl_value_t* ret = jl_eval_string("\"Julia string\"");
         if (!ret) {
             throw std::runtime_error("Julia eval failed");
@@ -112,11 +108,11 @@ TEST_F(JuliaExecutorTest, SubmitTaskWithJuliaStringReturn) {
 }
 
 TEST_F(JuliaExecutorTest, SubmitTaskWithJuliaArrayCreation) {
-    auto result = executor_->Submit<std::vector<double>>([]() {
+    auto result = executor_->Submit([]() {
         jl_value_t* array_type = jl_apply_array_type(reinterpret_cast<jl_value_t*>(jl_float64_type), 1);
         jl_array_t* array = jl_alloc_array_1d(array_type, 5);
 
-        double* data = reinterpret_cast<double*>(jl_array_data(array));
+        double* data = jl_array_data(array, double);
         for (size_t i = 0; i < 5; ++i) {
             data[i] = static_cast<double>(i) * 2.0;
         }
@@ -138,7 +134,7 @@ TEST_F(JuliaExecutorTest, SubmitTaskWithJuliaArrayCreation) {
 
 TEST_F(JuliaExecutorTest, SubmitTaskThatThrowsStdException) {
     EXPECT_THROW({
-        executor_->Submit<int>([]() -> int {
+        executor_->Submit([]() -> int {
             throw std::runtime_error("Test exception");
         });
     }, std::runtime_error);
@@ -152,7 +148,7 @@ TEST_F(JuliaExecutorTest, SubmitTaskThatThrowsCustomException) {
     };
 
     EXPECT_THROW({
-        executor_->Submit<int>([]() -> int {
+        executor_->Submit([]() -> int {
             throw CustomException();
         });
     }, CustomException);
@@ -160,7 +156,7 @@ TEST_F(JuliaExecutorTest, SubmitTaskThatThrowsCustomException) {
 
 TEST_F(JuliaExecutorTest, SubmitTaskWithJuliaError) {
     EXPECT_THROW({
-        executor_->Submit<int>([]() -> int {
+        executor_->Submit([]() -> int {
             jl_eval_string("error(\"Intentional Julia error\")");
             jl_exception_occurred();
             throw std::runtime_error("Julia error occurred");
@@ -171,13 +167,13 @@ TEST_F(JuliaExecutorTest, SubmitTaskWithJuliaError) {
 TEST_F(JuliaExecutorTest, ExceptionDoesNotCrashExecutor) {
     // First task throws
     EXPECT_THROW({
-        executor_->Submit<int>([]() -> int {
+        executor_->Submit([]() -> int {
             throw std::runtime_error("First error");
         });
     }, std::runtime_error);
 
     // Executor should still work
-    auto result = executor_->Submit<int>([]() {
+    auto result = executor_->Submit([]() {
         return 123;
     });
 
@@ -197,7 +193,7 @@ TEST_F(JuliaExecutorTest, SubmitFromMultipleThreads) {
         threads.emplace_back([this, &success_count, t]() {
             for (int i = 0; i < tasks_per_thread; ++i) {
                 int expected = t * 1000 + i;
-                auto result = executor_->Submit<int>([expected]() {
+                auto result = executor_->Submit([expected]() {
                     return expected;
                 });
 
@@ -226,7 +222,7 @@ TEST_F(JuliaExecutorTest, TasksExecuteInOrder) {
     std::vector<std::thread> threads;
     for (int i = 0; i < num_tasks; ++i) {
         threads.emplace_back([this, &results, &results_mutex, i]() {
-            executor_->Submit<void>([&results, &results_mutex, i]() {
+            executor_->Submit([&results, &results_mutex, i]() {
                 std::lock_guard<std::mutex> lock(results_mutex);
                 results.push_back(i);
             });
@@ -260,7 +256,7 @@ TEST_F(JuliaExecutorTest, ConcurrentSubmissionsWithDifferentReturnTypes) {
     // Submit int tasks
     for (int i = 0; i < 10; ++i) {
         threads.emplace_back([this, &int_count]() {
-            auto result = executor_->Submit<int>([]() { return 42; });
+            auto result = executor_->Submit([]() { return 42; });
             if (result == 42) int_count++;
         });
     }
@@ -268,7 +264,7 @@ TEST_F(JuliaExecutorTest, ConcurrentSubmissionsWithDifferentReturnTypes) {
     // Submit double tasks
     for (int i = 0; i < 10; ++i) {
         threads.emplace_back([this, &double_count]() {
-            auto result = executor_->Submit<double>([]() { return 3.14; });
+            auto result = executor_->Submit([]() { return 3.14; });
             if (std::abs(result - 3.14) < 1e-9) double_count++;
         });
     }
@@ -276,7 +272,7 @@ TEST_F(JuliaExecutorTest, ConcurrentSubmissionsWithDifferentReturnTypes) {
     // Submit string tasks
     for (int i = 0; i < 10; ++i) {
         threads.emplace_back([this, &string_count]() {
-            auto result = executor_->Submit<std::string>([]() { return std::string("test"); });
+            auto result = executor_->Submit([]() { return std::string("test"); });
             if (result == "test") string_count++;
         });
     }
@@ -293,7 +289,7 @@ TEST_F(JuliaExecutorTest, ConcurrentSubmissionsWithDifferentReturnTypes) {
 // Tests with Variables and Partials
 
 TEST_F(JuliaExecutorTest, SubmitTaskReturningVariables) {
-    auto result = executor_->Submit<Variables>([]() {
+    auto result = executor_->Submit([]() {
         Variables vars;
         vars["x"] = Variable(kInput, {3});
         vars["x"](0) = 1.0;
@@ -310,22 +306,25 @@ TEST_F(JuliaExecutorTest, SubmitTaskReturningVariables) {
 }
 
 TEST_F(JuliaExecutorTest, SubmitTaskReturningPartials) {
-    auto result = executor_->Submit<Partials>([]() {
+    auto result = executor_->Submit([]() {
         Partials partials;
         partials[{"y", "x"}] = Variable(kOutput, {2, 2});
-        partials[{"y", "x"}](0, 0) = 1.0;
-        partials[{"y", "x"}](0, 1) = 2.0;
-        partials[{"y", "x"}](1, 0) = 3.0;
-        partials[{"y", "x"}](1, 1) = 4.0;
+        // Matrix {2,2}: use flat indexing
+        partials[{"y", "x"}](0) = 1.0;  // [0,0]
+        partials[{"y", "x"}](1) = 2.0;  // [0,1]
+        partials[{"y", "x"}](2) = 3.0;  // [1,0]
+        partials[{"y", "x"}](3) = 4.0;  // [1,1]
         return partials;
     });
 
-    ASSERT_TRUE(result.count({"y", "x"}) > 0);
-    EXPECT_EQ(result[{"y", "x"}].Size(), 4);
-    EXPECT_DOUBLE_EQ(result[{"y", "x"}](0, 0), 1.0);
-    EXPECT_DOUBLE_EQ(result[{"y", "x"}](0, 1), 2.0);
-    EXPECT_DOUBLE_EQ(result[{"y", "x"}](1, 0), 3.0);
-    EXPECT_DOUBLE_EQ(result[{"y", "x"}](1, 1), 4.0);
+    auto key = std::make_pair("y", "x");
+    ASSERT_TRUE(result.count(key) > 0);
+    EXPECT_EQ(result[key].Size(), 4);
+    // Use flat indexing for access
+    EXPECT_DOUBLE_EQ(result[key](0), 1.0);  // [0,0]
+    EXPECT_DOUBLE_EQ(result[key](1), 2.0);  // [0,1]
+    EXPECT_DOUBLE_EQ(result[key](2), 3.0);  // [1,0]
+    EXPECT_DOUBLE_EQ(result[key](3), 4.0);  // [1,1]
 }
 
 TEST_F(JuliaExecutorTest, SubmitTaskWithVariablesParameter) {
@@ -334,7 +333,7 @@ TEST_F(JuliaExecutorTest, SubmitTaskWithVariablesParameter) {
     input_vars["a"](0) = 10.0;
     input_vars["a"](1) = 20.0;
 
-    auto result = executor_->Submit<double>([input_vars]() {
+    auto result = executor_->Submit([input_vars]() {
         return input_vars.at("a")(0) + input_vars.at("a")(1);
     });
 
@@ -350,7 +349,7 @@ TEST_F(JuliaExecutorTest, ManySmallTasks) {
     std::vector<std::thread> threads;
     for (int i = 0; i < num_tasks; ++i) {
         threads.emplace_back([this, &counter]() {
-            executor_->Submit<void>([&counter]() {
+            executor_->Submit([&counter]() {
                 counter++;
             });
         });
@@ -370,7 +369,7 @@ TEST_F(JuliaExecutorTest, TasksWithVariableExecutionTime) {
     std::vector<std::thread> threads;
     for (int i = 0; i < num_tasks; ++i) {
         threads.emplace_back([this, &completed, i]() {
-            executor_->Submit<void>([&completed, i]() {
+            executor_->Submit([&completed, i]() {
                 // Variable work (some tasks do more work than others)
                 int iterations = (i % 10 + 1) * 100;
                 volatile double sum = 0.0;
@@ -392,7 +391,7 @@ TEST_F(JuliaExecutorTest, TasksWithVariableExecutionTime) {
 // Edge cases
 
 TEST_F(JuliaExecutorTest, SubmitTaskReturningEmptyString) {
-    auto result = executor_->Submit<std::string>([]() {
+    auto result = executor_->Submit([]() {
         return std::string("");
     });
 
@@ -400,7 +399,7 @@ TEST_F(JuliaExecutorTest, SubmitTaskReturningEmptyString) {
 }
 
 TEST_F(JuliaExecutorTest, SubmitTaskReturningZero) {
-    auto result = executor_->Submit<int>([]() {
+    auto result = executor_->Submit([]() {
         return 0;
     });
 
@@ -408,7 +407,7 @@ TEST_F(JuliaExecutorTest, SubmitTaskReturningZero) {
 }
 
 TEST_F(JuliaExecutorTest, SubmitTaskReturningNegativeNumber) {
-    auto result = executor_->Submit<int>([]() {
+    auto result = executor_->Submit([]() {
         return -42;
     });
 
@@ -416,7 +415,7 @@ TEST_F(JuliaExecutorTest, SubmitTaskReturningNegativeNumber) {
 }
 
 TEST_F(JuliaExecutorTest, SubmitTaskReturningNaN) {
-    auto result = executor_->Submit<double>([]() {
+    auto result = executor_->Submit([]() {
         return std::numeric_limits<double>::quiet_NaN();
     });
 
@@ -424,7 +423,7 @@ TEST_F(JuliaExecutorTest, SubmitTaskReturningNaN) {
 }
 
 TEST_F(JuliaExecutorTest, SubmitTaskReturningInfinity) {
-    auto result = executor_->Submit<double>([]() {
+    auto result = executor_->Submit([]() {
         return std::numeric_limits<double>::infinity();
     });
 
@@ -434,7 +433,7 @@ TEST_F(JuliaExecutorTest, SubmitTaskReturningInfinity) {
 TEST_F(JuliaExecutorTest, SubmitTaskWithLargeDataStructure) {
     constexpr size_t large_size = 10000;
 
-    auto result = executor_->Submit<std::vector<double>>([large_size]() {
+    auto result = executor_->Submit([large_size]() {
         std::vector<double> data(large_size);
         for (size_t i = 0; i < large_size; ++i) {
             data[i] = static_cast<double>(i);

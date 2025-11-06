@@ -29,7 +29,7 @@ protected:
 // VariablesToJuliaDict and JuliaDictToVariables roundtrip tests
 
 TEST_F(JuliaConvertTest, RoundtripScalar) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         Variables vars;
         vars["x"] = Variable(philote::kOutput, {1});
         vars["x"](0) = 42.0;
@@ -50,7 +50,7 @@ TEST_F(JuliaConvertTest, RoundtripScalar) {
 }
 
 TEST_F(JuliaConvertTest, RoundtripVector) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         Variables vars;
         vars["vec"] = Variable(philote::kOutput, {3});
         vars["vec"](0) = 1.0;
@@ -73,15 +73,16 @@ TEST_F(JuliaConvertTest, RoundtripVector) {
 }
 
 TEST_F(JuliaConvertTest, RoundtripMatrix) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         Variables vars;
         vars["mat"] = Variable(philote::kOutput, {2, 3});
-        vars["mat"](0, 0) = 1.0;
-        vars["mat"](0, 1) = 2.0;
-        vars["mat"](0, 2) = 3.0;
-        vars["mat"](1, 0) = 4.0;
-        vars["mat"](1, 1) = 5.0;
-        vars["mat"](1, 2) = 6.0;
+        // Matrix is {2, 3} - 2 rows, 3 columns. Use flat indexing: row * ncols + col
+        vars["mat"](0) = 1.0;  // [0,0]
+        vars["mat"](1) = 2.0;  // [0,1]
+        vars["mat"](2) = 3.0;  // [0,2]
+        vars["mat"](3) = 4.0;  // [1,0]
+        vars["mat"](4) = 5.0;  // [1,1]
+        vars["mat"](5) = 6.0;  // [1,2]
 
         jl_value_t* dict = VariablesToJuliaDict(vars);
         Variables vars_back = JuliaDictToVariables(dict);
@@ -93,13 +94,13 @@ TEST_F(JuliaConvertTest, RoundtripMatrix) {
         const auto& shape = mat.Shape();
         if (shape.size() != 2 || shape[0] != 2 || shape[1] != 3) return false;
 
-        // Check all values
-        if (std::abs(mat(0, 0) - 1.0) > 1e-9) return false;
-        if (std::abs(mat(0, 1) - 2.0) > 1e-9) return false;
-        if (std::abs(mat(0, 2) - 3.0) > 1e-9) return false;
-        if (std::abs(mat(1, 0) - 4.0) > 1e-9) return false;
-        if (std::abs(mat(1, 1) - 5.0) > 1e-9) return false;
-        if (std::abs(mat(1, 2) - 6.0) > 1e-9) return false;
+        // Check all values using flat indexing
+        if (std::abs(mat(0) - 1.0) > 1e-9) return false;  // [0,0]
+        if (std::abs(mat(1) - 2.0) > 1e-9) return false;  // [0,1]
+        if (std::abs(mat(2) - 3.0) > 1e-9) return false;  // [0,2]
+        if (std::abs(mat(3) - 4.0) > 1e-9) return false;  // [1,0]
+        if (std::abs(mat(4) - 5.0) > 1e-9) return false;  // [1,1]
+        if (std::abs(mat(5) - 6.0) > 1e-9) return false;  // [1,2]
 
         return true;
     });
@@ -108,7 +109,7 @@ TEST_F(JuliaConvertTest, RoundtripMatrix) {
 }
 
 TEST_F(JuliaConvertTest, RoundtripMultipleVariables) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         Variables vars;
         vars["a"] = Variable(philote::kOutput, {1});
         vars["a"](0) = 10.0;
@@ -118,10 +119,11 @@ TEST_F(JuliaConvertTest, RoundtripMultipleVariables) {
         vars["b"](1) = 30.0;
 
         vars["c"] = Variable(philote::kOutput, {2, 2});
-        vars["c"](0, 0) = 1.0;
-        vars["c"](0, 1) = 2.0;
-        vars["c"](1, 0) = 3.0;
-        vars["c"](1, 1) = 4.0;
+        // Matrix {2,2}: flat indexing
+        vars["c"](0) = 1.0;  // [0,0]
+        vars["c"](1) = 2.0;  // [0,1]
+        vars["c"](2) = 3.0;  // [1,0]
+        vars["c"](3) = 4.0;  // [1,1]
 
         jl_value_t* dict = VariablesToJuliaDict(vars);
         Variables vars_back = JuliaDictToVariables(dict);
@@ -137,13 +139,13 @@ TEST_F(JuliaConvertTest, RoundtripMultipleVariables) {
         if (std::abs(vars_back.at("b")(0) - 20.0) > 1e-9) return false;
         if (std::abs(vars_back.at("b")(1) - 30.0) > 1e-9) return false;
 
-        // Check 'c'
+        // Check 'c' using flat indexing
         const auto& c = vars_back.at("c");
         if (c.Size() != 4) return false;
-        if (std::abs(c(0, 0) - 1.0) > 1e-9) return false;
-        if (std::abs(c(0, 1) - 2.0) > 1e-9) return false;
-        if (std::abs(c(1, 0) - 3.0) > 1e-9) return false;
-        if (std::abs(c(1, 1) - 4.0) > 1e-9) return false;
+        if (std::abs(c(0) - 1.0) > 1e-9) return false;  // [0,0]
+        if (std::abs(c(1) - 2.0) > 1e-9) return false;  // [0,1]
+        if (std::abs(c(2) - 3.0) > 1e-9) return false;  // [1,0]
+        if (std::abs(c(3) - 4.0) > 1e-9) return false;  // [1,1]
 
         return true;
     });
@@ -152,7 +154,7 @@ TEST_F(JuliaConvertTest, RoundtripMultipleVariables) {
 }
 
 TEST_F(JuliaConvertTest, RoundtripZeroValues) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         Variables vars;
         vars["zero"] = Variable(philote::kOutput, {3});
         vars["zero"](0) = 0.0;
@@ -176,7 +178,7 @@ TEST_F(JuliaConvertTest, RoundtripZeroValues) {
 }
 
 TEST_F(JuliaConvertTest, RoundtripNegativeValues) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         Variables vars;
         vars["neg"] = Variable(philote::kOutput, {3});
         vars["neg"](0) = -1.0;
@@ -198,7 +200,7 @@ TEST_F(JuliaConvertTest, RoundtripNegativeValues) {
 }
 
 TEST_F(JuliaConvertTest, RoundtripLargeVector) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         constexpr size_t size = 1000;
         Variables vars;
         vars["large"] = Variable(philote::kOutput, {size});
@@ -226,7 +228,7 @@ TEST_F(JuliaConvertTest, RoundtripLargeVector) {
 // JuliaDictToPartials tests
 
 TEST_F(JuliaConvertTest, PartialsSingleDerivative) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         // Create a Julia flat dict with "output~input" => [2.0]
         jl_value_t* result_dict = jl_eval_string("Dict(\"y~x\" => [2.0])");
         if (!result_dict || jl_exception_occurred()) return false;
@@ -244,7 +246,7 @@ TEST_F(JuliaConvertTest, PartialsSingleDerivative) {
 }
 
 TEST_F(JuliaConvertTest, PartialsMultipleDerivatives) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         // Create flat dict with multiple partials
         jl_value_t* result_dict = jl_eval_string(
             "Dict(\"f~x\" => [2.0], \"f~y\" => [3.0], \"g~x\" => [4.0])");
@@ -268,7 +270,7 @@ TEST_F(JuliaConvertTest, PartialsMultipleDerivatives) {
 }
 
 TEST_F(JuliaConvertTest, PartialsMatrixJacobian) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         // Create a partial with matrix jacobian (2x2)
         jl_value_t* result_dict = jl_eval_string(
             "Dict(\"y~x\" => reshape([1.0, 2.0, 3.0, 4.0], 2, 2))");
@@ -285,10 +287,11 @@ TEST_F(JuliaConvertTest, PartialsMatrixJacobian) {
         // Julia is column-major, so reshape([1,2,3,4], 2, 2) gives:
         // [1 3]
         // [2 4]
-        if (std::abs(jacobian(0, 0) - 1.0) > 1e-9) return false;
-        if (std::abs(jacobian(1, 0) - 2.0) > 1e-9) return false;
-        if (std::abs(jacobian(0, 1) - 3.0) > 1e-9) return false;
-        if (std::abs(jacobian(1, 1) - 4.0) > 1e-9) return false;
+        // Use flat indexing: for 2x2 matrix in row-major: index = row * 2 + col
+        if (std::abs(jacobian(0) - 1.0) > 1e-9) return false;  // [0,0]
+        if (std::abs(jacobian(2) - 2.0) > 1e-9) return false;  // [1,0]
+        if (std::abs(jacobian(1) - 3.0) > 1e-9) return false;  // [0,1]
+        if (std::abs(jacobian(3) - 4.0) > 1e-9) return false;  // [1,1]
 
         return true;
     });
@@ -299,7 +302,7 @@ TEST_F(JuliaConvertTest, PartialsMatrixJacobian) {
 // ProtobufStructToJuliaDict tests
 
 TEST_F(JuliaConvertTest, ProtobufStructWithNumbers) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         google::protobuf::Struct pb_struct;
         (*pb_struct.mutable_fields())["a"].set_number_value(42.0);
         (*pb_struct.mutable_fields())["b"].set_number_value(3.14);
@@ -323,7 +326,7 @@ TEST_F(JuliaConvertTest, ProtobufStructWithNumbers) {
 }
 
 TEST_F(JuliaConvertTest, ProtobufStructWithBool) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         google::protobuf::Struct pb_struct;
         (*pb_struct.mutable_fields())["flag"].set_bool_value(true);
         (*pb_struct.mutable_fields())["other"].set_bool_value(false);
@@ -348,7 +351,7 @@ TEST_F(JuliaConvertTest, ProtobufStructWithBool) {
 }
 
 TEST_F(JuliaConvertTest, ProtobufStructWithString) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         google::protobuf::Struct pb_struct;
         (*pb_struct.mutable_fields())["name"].set_string_value("test_string");
 
@@ -370,7 +373,7 @@ TEST_F(JuliaConvertTest, ProtobufStructWithString) {
 }
 
 TEST_F(JuliaConvertTest, ProtobufStructMixed) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         google::protobuf::Struct pb_struct;
         (*pb_struct.mutable_fields())["num"].set_number_value(123.0);
         (*pb_struct.mutable_fields())["flag"].set_bool_value(true);
@@ -398,7 +401,7 @@ TEST_F(JuliaConvertTest, ProtobufStructMixed) {
 }
 
 TEST_F(JuliaConvertTest, ProtobufStructEmpty) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         google::protobuf::Struct pb_struct;
 
         jl_value_t* dict = ProtobufStructToJuliaDict(pb_struct);
@@ -418,7 +421,7 @@ TEST_F(JuliaConvertTest, ProtobufStructEmpty) {
 // Edge cases and error tests
 
 TEST_F(JuliaConvertTest, EmptyVariablesDict) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         Variables vars;  // Empty
 
         jl_value_t* dict = VariablesToJuliaDict(vars);
@@ -434,7 +437,7 @@ TEST_F(JuliaConvertTest, EmptyVariablesDict) {
 }
 
 TEST_F(JuliaConvertTest, VariableNameWithSpecialChars) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         Variables vars;
         vars["var_123"] = Variable(philote::kOutput, {1});
         vars["var_123"](0) = 99.0;
@@ -456,7 +459,7 @@ TEST_F(JuliaConvertTest, VariableNameWithSpecialChars) {
 }
 
 TEST_F(JuliaConvertTest, PartialsWithComplexNames) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         // Test with underscores and numbers in names
         jl_value_t* result_dict = jl_eval_string(
             "Dict(\"output_1~input_2\" => [5.0])");
@@ -475,7 +478,7 @@ TEST_F(JuliaConvertTest, PartialsWithComplexNames) {
 }
 
 TEST_F(JuliaConvertTest, InvalidJuliaDictToVariables) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         // Try to convert a non-dict Julia value
         jl_value_t* not_a_dict = jl_eval_string("42");
 
@@ -491,7 +494,7 @@ TEST_F(JuliaConvertTest, InvalidJuliaDictToVariables) {
 }
 
 TEST_F(JuliaConvertTest, InvalidJuliaDictToPartials) {
-    auto result = JuliaExecutor::GetInstance().Submit<bool>([]() {
+    auto result = JuliaExecutor::GetInstance().Submit([]() {
         // Try to convert invalid dict format
         jl_value_t* invalid_dict = jl_eval_string("Dict(\"not_tilde\" => [1.0])");
 
