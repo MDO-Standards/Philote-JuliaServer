@@ -18,23 +18,40 @@ namespace julia {
 namespace test {
 
 /**
- * @brief Base test fixture that initializes Julia runtime
+ * @brief Global test environment for Julia
  *
- * This fixture ensures Julia runtime is initialized before tests run
- * and that the executor is properly started.
+ * Ensures Julia runtime and executor are initialized once for all tests
  */
-class JuliaTestFixture : public ::testing::Test {
-protected:
+class JuliaTestEnvironment : public ::testing::Environment {
+public:
     void SetUp() override {
-        // Julia runtime is singleton, so this is safe
-        runtime_ = &JuliaRuntime::GetInstance();
+        // Initialize Julia runtime singleton
+        JuliaRuntime::GetInstance();
 
-        // Start executor
+        // Start executor thread (only once for all tests)
         JuliaExecutor::GetInstance().Start();
     }
 
     void TearDown() override {
         // Executor cleanup happens in its destructor
+        JuliaExecutor::GetInstance().Stop();
+    }
+};
+
+/**
+ * @brief Base test fixture that provides access to Julia runtime
+ *
+ * Does NOT reinitialize Julia or restart executor - that's done once globally
+ */
+class JuliaTestFixture : public ::testing::Test {
+protected:
+    void SetUp() override {
+        // Just get reference to singleton - already initialized by Environment
+        runtime_ = &JuliaRuntime::GetInstance();
+    }
+
+    void TearDown() override {
+        // Nothing to do - executor stays running for all tests
     }
 
     JuliaRuntime* runtime_;
