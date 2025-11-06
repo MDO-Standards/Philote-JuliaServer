@@ -1,5 +1,7 @@
 # Philote-JuliaServer
 
+[![Build and Tests](https://github.com/MDO-Standards/Philote-JuliaServer/actions/workflows/build.yml/badge.svg)](https://github.com/MDO-Standards/Philote-JuliaServer/actions/workflows/build.yml)
+
 A C++ gRPC server for hosting Julia disciplines in the Philote MDO framework.
 
 ## Overview
