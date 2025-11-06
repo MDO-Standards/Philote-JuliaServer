@@ -24,7 +24,7 @@ jobs:
           {c: clang-18, cpp: clang++-18}
         ]
         build_type: [Release, Debug]
-        julia_version: ["1.9", "1.10"]
+        julia_version: ["1.11"]
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -61,7 +61,7 @@ jobs:
     - name: Clone and build Philote-Cpp
       run: |
         cd ..
-        git clone https://github.com/MDO-Standards/Philote-Cpp.git
+        git clone --recurse-submodules https://github.com/MDO-Standards/Philote-Cpp.git
         cd Philote-Cpp
         mkdir build && cd build
         cmake .. \

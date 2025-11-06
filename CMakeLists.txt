@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.23)
-project(PhiloteJuliaServer VERSION 0.1.0 LANGUAGES CXX)
+project(PhiloteJuliaServer VERSION 0.0.0 LANGUAGES CXX)
 
 # C++20 required
 set(CMAKE_CXX_STANDARD 20)
@@ -24,8 +24,8 @@ endif()
 message(STATUS "Finding Philote-Cpp...")
 find_package(PhiloteCpp REQUIRED)
 
-message(STATUS "Finding Julia 1.9+...")
-find_package(Julia 1.9 REQUIRED)
+message(STATUS "Finding Julia 1.11+...")
+find_package(Julia 1.11 REQUIRED)
 
 message(STATUS "Finding yaml-cpp...")
 find_package(yaml-cpp REQUIRED)

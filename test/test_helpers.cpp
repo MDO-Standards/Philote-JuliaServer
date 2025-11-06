@@ -14,25 +14,31 @@ namespace test {
 // Helper function implementations
 
 std::string CreateTempJuliaFile(const std::string& content) {
-    // Create temp file in /tmp
-    std::string temp_pattern = "/tmp/julia_test_XXXXXX.jl";
-    char* temp_path = new char[temp_pattern.size() + 1];
-    std::strcpy(temp_path, temp_pattern.c_str());
+    // Create temp file in /tmp (mkstemp doesn't support extensions, so we add .jl after)
+    char temp_pattern[] = "/tmp/julia_test_XXXXXX";
 
     // Create unique temporary file
-    int fd = mkstemp(temp_path);
+    int fd = mkstemp(temp_pattern);
     if (fd == -1) {
-        delete[] temp_path;
         throw std::runtime_error("Failed to create temporary Julia file");
     }
 
-    // Write content
-    std::string path(temp_path);
-    delete[] temp_path;
+    // Rename to add .jl extension
+    std::string path_without_ext(temp_pattern);
+    std::string path = path_without_ext + ".jl";
+
     close(fd);
 
+    // Rename the file to have .jl extension
+    if (rename(path_without_ext.c_str(), path.c_str()) != 0) {
+        unlink(path_without_ext.c_str());  // Clean up
+        throw std::runtime_error("Failed to rename temporary file to .jl");
+    }
+
+    // Write content
     std::ofstream file(path);
     if (!file.is_open()) {
+        unlink(path.c_str());  // Clean up
         throw std::runtime_error("Failed to open temporary file: " + path);
     }
 
@@ -43,15 +49,26 @@ std::string CreateTempJuliaFile(const std::string& content) {
 }
 
 std::string GetTestDisciplinePath(const std::string& filename) {
-    // Construct path to test disciplines
-    std::filesystem::path examples_dir = std::filesystem::current_path() / "examples" / "test_disciplines";
-    std::filesystem::path file_path = examples_dir / filename;
+    // Try to find test disciplines relative to source directory
+    // First try relative to current path (for running from build dir)
+    std::filesystem::path cwd = std::filesystem::current_path();
 
-    if (!std::filesystem::exists(file_path)) {
-        throw std::runtime_error("Test discipline not found: " + file_path.string());
+    // Common patterns: build/, build/test/, or source root
+    std::vector<std::filesystem::path> search_paths = {
+        cwd / "examples" / "test_disciplines",  // Running from build
+        cwd / ".." / "examples" / "test_disciplines",  // Running from build/test
+        cwd / ".." / ".." / "examples" / "test_disciplines",  // Running from build/test/subdir
+    };
+
+    for (const auto& base_path : search_paths) {
+        std::filesystem::path file_path = base_path / filename;
+        if (std::filesystem::exists(file_path)) {
+            return std::filesystem::canonical(file_path).string();
+        }
     }
 
-    return file_path.string();
+    throw std::runtime_error("Test discipline not found: " + filename +
+                           " (searched from " + cwd.string() + ")");
 }
 
 void ExpectVariableEquals(const philote::Variable& expected,
