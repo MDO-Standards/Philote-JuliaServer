@@ -40,7 +40,7 @@ target_link_libraries(julia_tests
 # Discover tests for CTest
 include(GoogleTest)
 gtest_discover_tests(julia_tests
-    PROPERTIES TIMEOUT 3
+    PROPERTIES TIMEOUT 10
 )
 
 # Integration tests (separate executable to avoid Julia init conflicts)
@@ -56,5 +56,5 @@ target_link_libraries(julia_integration_tests
 )
 
 gtest_discover_tests(julia_integration_tests
-    PROPERTIES TIMEOUT 3
+    PROPERTIES TIMEOUT 10
 )

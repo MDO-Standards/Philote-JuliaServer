@@ -121,7 +121,7 @@ jl_value_t* VariablesToJuliaDict(const philote::Variables& vars) {
         jl_array_t* jl_array = jl_alloc_array_1d(array_type, total_size);
 
         // Copy data (C++ row-major to Julia column-major)
-        double* jl_data = reinterpret_cast<double*>(jl_array_data(jl_array, double));
+        double* jl_data = jl_array_data(jl_array, double);
 
         // For 1D arrays, direct copy
         if (shape.size() == 1) {
