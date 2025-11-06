@@ -24,6 +24,7 @@ add_executable(julia_tests
     test_julia_thread.cpp
     test_julia_convert.cpp
     test_julia_config.cpp
+    test_julia_executor.cpp
 )
 
 target_link_libraries(julia_tests
